@@ -1,0 +1,58 @@
+﻿using Dose.Domain.Common;
+using Dose.Domain.ValueObjects;
+
+namespace Dose.Domain.Entities;
+
+public class DrinkLog : BaseEntity
+{
+    public Guid UserId { get; private set; }
+    public virtual User User { get; private set; } = null!;
+
+    public Guid? DrinkId { get; private set; }
+    public virtual Drink? Drink { get; private set; }
+
+    public string DrinkNameSnapshot { get; private set; } = null!;
+    public bool IsCustomized { get; private set; }
+    public DateTimeOffset ConsumedAt { get; private set; }
+    
+    public decimal TotalVolumeCl { get; private set; }
+    public decimal EffectiveAbv { get; private set; }
+    public decimal TotalPureAlcoholCl { get; private set; }
+    public decimal TotalPureAlcoholGrams { get; private set; }
+    public string? Notes { get; private set; }
+    
+    public virtual ICollection<DrinkLogItem> Items { get; private set; } = new List<DrinkLogItem>();
+
+    protected DrinkLog() { }
+
+    public DrinkLog(
+        Guid userId,
+        Guid? drinkId,
+        string drinkNameSnapshot,
+        bool isCustomized,
+        DateTimeOffset consumedAt,
+        decimal totalVolumeCl,
+        decimal effectiveAbv,
+        PureAlcohol pureAlcohol,
+        string? notes = null)
+    {
+        if (string.IsNullOrWhiteSpace(drinkNameSnapshot))
+            throw new DomainException("The registered drink name cannot be empty.");
+
+        UserId = userId;
+        DrinkId = drinkId;
+        DrinkNameSnapshot = drinkNameSnapshot.Trim();
+        IsCustomized = isCustomized;
+        ConsumedAt = consumedAt;
+        TotalVolumeCl = Math.Round(totalVolumeCl, 2);
+        EffectiveAbv = Math.Round(effectiveAbv, 2);
+        TotalPureAlcoholCl = pureAlcohol.PureAlcoholCl;
+        TotalPureAlcoholGrams = pureAlcohol.Grams;
+        Notes = notes?.Trim();
+    }
+
+    public void AddItem(DrinkLogItem item)
+    {
+        Items.Add(item);
+    }
+}
