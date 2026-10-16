@@ -1,0 +1,37 @@
+﻿using FluentValidation;
+
+namespace Dose.Application.Features.Drinks.Commands;
+
+public record CreateDrinkIngredientItem(
+    Guid IngredientId,
+    decimal AmountCl,
+    string? DisplayUnitNote = null,
+    bool IsOptional = false,
+    short SortOrder = 0
+);
+
+public record CreateDrinkCommand(
+    string Name,
+    string Description,
+    IReadOnlyList<string> PreparationSteps,
+    string? GlassType,
+    string? ImageUrl,
+    IReadOnlyList<CreateDrinkIngredientItem> Ingredients
+);
+
+public class CreateDrinkCommandValidator : AbstractValidator<CreateDrinkCommand>
+{
+    public CreateDrinkCommandValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(120);
+        RuleFor(x => x.Description).NotEmpty();
+        RuleFor(x => x.Ingredients)
+            .NotEmpty().WithMessage("A drink recipe must contain at least one ingredient.");
+
+        RuleForEach(x => x.Ingredients).ChildRules(item =>
+        {
+            item.RuleFor(i => i.IngredientId).NotEmpty();
+            item.RuleFor(i => i.AmountCl).GreaterThanOrEqualTo(0m);
+        });
+    }
+}
