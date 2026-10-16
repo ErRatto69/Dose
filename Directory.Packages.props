@@ -1,0 +1,41 @@
+﻿<Project>
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+        <!-- Abilita versioni con asterisco come 10.0.0-* -->
+        <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Entity Framework Core 10 & PostgreSQL Driver -->
+        <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0-*" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.0-*" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0-*" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.0-*" />
+
+        <!-- Autenticazione, JWT & Crittografia Password -->
+        <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0-*" />
+        <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.2.1" />
+        <PackageVersion Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
+
+        <!-- Validazione & Utility -->
+        <PackageVersion Include="FluentValidation" Version="11.11.0" />
+        <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
+
+        <!-- Documentazione OpenAPI / Scalar -->
+        <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-*" />
+        <PackageVersion Include="Scalar.AspNetCore" Version="2.0.1" />
+
+        <!-- Testing Frameworks & Assertions -->
+        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+        <PackageVersion Include="xunit" Version="2.9.3" />
+        <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.1" />
+        <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+        <PackageVersion Include="FluentAssertions" Version="8.0.1" />
+        <PackageVersion Include="NSubstitute" Version="5.3.0" />
+
+        <!-- Integration Testing & Testcontainers -->
+        <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0-*" />
+        <PackageVersion Include="Testcontainers.PostgreSql" Version="4.2.0" />
+    </ItemGroup>
+</Project>
