@@ -6,9 +6,10 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Silenzia il warning di naming CA1707 per i metodi di test con underscore -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
   </PropertyGroup>
 
-  <!-- Using globali automatici per tutti i file di test -->
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="FluentAssertions" />
