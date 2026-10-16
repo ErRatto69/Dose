@@ -1,0 +1,12 @@
+﻿/src/Dose.Api/bin/
+/src/Dose.Api/obj/
+/src/Dose.Application/bin/
+/src/Dose.Application/obj/
+/src/Dose.Domain/bin/
+/src/Dose.Domain/obj/
+/src/Dose.Infrastructure/bin/
+/src/Dose.Infrastructure/obj/
+/tests/Dose.IntegrationTests/bin/
+/tests/Dose.IntegrationTests/obj/
+/tests/Dose.UnitTests/bin/
+/tests/Dose.UnitTests/obj/
