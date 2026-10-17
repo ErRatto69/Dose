@@ -8,12 +8,14 @@ import { CatalogPage } from '@/pages/CatalogPage';
 import { CabinetMatcherPage } from '@/pages/CabinetMatcherPage';
 import { MyBacDashboardPage } from '@/pages/MyBacDashboardPage';
 import { LeaderboardPage } from '@/pages/LeaderboardPage';
+import { ProfilePage } from '@/pages/ProfilePage';
 import { AdminSafetyMonitorPage } from '@/pages/admin/AdminSafetyMonitorPage';
+import { AdminUsersPage } from '@/pages/admin/AdminUsersPage';
 
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: {
-            staleTime: 1000 * 60 * 2, // 2 minuti di cache standard
+            staleTime: 1000 * 60 * 2,
             retry: 1,
         },
     },
@@ -31,7 +33,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
         return <Navigate to="/login" replace />;
     }
 
-    if (requireAdmin && user?.role !== 'Admin') {
+    const isAdmin = user?.role === 'Admin' || String(user?.role) === '0';
+
+    if (requireAdmin && !isAdmin) {
         return <Navigate to="/drinks" replace />;
     }
 
@@ -59,8 +63,17 @@ export default function App() {
                         <Route path="/cabinet" element={<CabinetMatcherPage />} />
                         <Route path="/bac" element={<MyBacDashboardPage />} />
                         <Route path="/leaderboard" element={<LeaderboardPage />} />
+                        <Route path="/profile" element={<ProfilePage />} />
 
-                        {/* Admin-only Live Safety Telemetry */}
+                        {/* Admin-only Routes */}
+                        <Route
+                            path="/admin/users"
+                            element={
+                                <ProtectedRoute requireAdmin>
+                                    <AdminUsersPage />
+                                </ProtectedRoute>
+                            }
+                        />
                         <Route
                             path="/admin/safety"
                             element={

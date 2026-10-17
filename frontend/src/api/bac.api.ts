@@ -3,6 +3,7 @@ import type {
     BacStatus,
     DrinkLogResponse,
     LogDrinkRequest,
+    LogCustomDrinkRequest,
     MonthlyLeaderboardResponse,
     AdminUserBacOverview,
 } from '@/types';
@@ -15,6 +16,11 @@ export const bacApi = {
 
     logDrink: async (drinkId: string, payload: LogDrinkRequest): Promise<DrinkLogResponse> => {
         const { data } = await axiosClient.post<DrinkLogResponse>(`/drinks/${drinkId}/log`, payload);
+        return data;
+    },
+
+    logCustomDrink: async (payload: LogCustomDrinkRequest): Promise<DrinkLogResponse> => {
+        const { data } = await axiosClient.post<DrinkLogResponse>('/drinks/custom/log', payload);
         return data;
     },
 

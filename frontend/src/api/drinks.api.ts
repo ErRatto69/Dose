@@ -1,10 +1,14 @@
 import { axiosClient } from './axiosClient';
 import type {
+    CabinetStatus,
+    CreateDrinkRequest,
+    CreateIngredientRequest,
     DrinkCatalogItem,
     DrinkDetail,
     DrinkMatchResult,
     Ingredient,
     IngredientSuggestion,
+    ReviewItem,
 } from '@/types';
 
 export const drinksApi = {
@@ -16,6 +20,34 @@ export const drinksApi = {
     getById: async (id: string): Promise<DrinkDetail> => {
         const { data } = await axiosClient.get<DrinkDetail>(`/drinks/${id}`);
         return data;
+    },
+
+    createDrink: async (payload: CreateDrinkRequest): Promise<{ id: string; name: string }> => {
+        const { data } = await axiosClient.post<{ id: string; name: string }>('/drinks', payload);
+        return data;
+    },
+
+    createIngredient: async (payload: CreateIngredientRequest): Promise<Ingredient> => {
+        const { data } = await axiosClient.post<Ingredient>('/ingredients', payload);
+        return data;
+    },
+
+    getReviews: async (drinkId: string): Promise<ReviewItem[]> => {
+        const { data } = await axiosClient.get<ReviewItem[]>(`/drinks/${drinkId}/reviews`);
+        return data;
+    },
+
+    upsertReview: async (drinkId: string, rating: number, comment?: string): Promise<void> => {
+        await axiosClient.post(`/drinks/${drinkId}/reviews`, { rating, comment });
+    },
+
+    getMyCabinet: async (): Promise<CabinetStatus> => {
+        const { data } = await axiosClient.get<CabinetStatus>('/cabinet');
+        return data;
+    },
+
+    syncCabinet: async (ingredientIds: string[]): Promise<void> => {
+        await axiosClient.post('/cabinet/sync', { ingredientIds });
     },
 
     matchCabinet: async (additionalIngredientIds?: string[]): Promise<DrinkMatchResult[]> => {

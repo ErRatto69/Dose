@@ -1,7 +1,15 @@
 export type UserRole = 'Admin' | 'Bartender' | 'Drinker';
 export type BiologicalSex = 'Male' | 'Female';
-export type IngredientCategory = 'Spirit' | 'Mixer' | 'Garnish' | 'Pantry';
-export type VolumeUnit = 'cl' | 'oz';
+export type IngredientCategory =
+    | 'Spirit'
+    | 'Liqueur'
+    | 'Wine'
+    | 'Beer'
+    | 'Mixer'
+    | 'Syrup'
+    | 'Garnish'
+    | 'Pantry';
+export type VolumeUnit = 'cl' | 'oz' | 'Cl' | 'Oz';
 export type BacSafetyLevel = 'Sober' | 'Safe' | 'Caution' | 'Warning' | 'Critical';
 export type MatchType = 'EXACT' | 'MISSING_ONE' | 'MISSING_TWO';
 
@@ -18,6 +26,39 @@ export interface UserProfile {
     isActive: boolean;
 }
 
+export interface UpdateBiometricsRequest {
+    weightKg: number;
+    heightCm: number;
+    sex: BiologicalSex;
+    birthYear?: number | null;
+    preferredUnit?: 'Cl' | 'Oz';
+}
+
+export interface CreateUserAdminRequest {
+    username: string;
+    email: string;
+    password: string;
+    role: UserRole;
+    weightKg: number;
+    heightCm: number;
+    sex: BiologicalSex;
+    birthYear?: number | null;
+    preferredUnit: 'Cl' | 'Oz';
+}
+
+export interface UpdateUserAdminRequest {
+    username: string;
+    email: string;
+    role: UserRole;
+    weightKg: number;
+    heightCm: number;
+    sex: BiologicalSex;
+    birthYear?: number | null;
+    preferredUnit: 'Cl' | 'Oz';
+    isActive: boolean;
+    newPassword?: string | null;
+}
+
 export interface AuthResponse {
     accessToken: string;
     expiresInSeconds: number;
@@ -28,6 +69,8 @@ export interface Ingredient {
     id: string;
     name: string;
     category: IngredientCategory;
+    subCategory: string;
+    flavor?: string | null;
     abv: number;
     isAvailableInBar: boolean;
     description?: string;
@@ -38,8 +81,15 @@ export interface IngredientSuggestion {
     id: string;
     name: string;
     category: IngredientCategory;
+    subCategory: string;
+    flavor?: string | null;
     abv: number;
     isAvailableInBar: boolean;
+}
+
+export interface CabinetStatus {
+    userId: string;
+    ingredients: Ingredient[];
 }
 
 export interface DrinkCatalogItem {
@@ -60,6 +110,8 @@ export interface DrinkIngredientDetail {
     ingredientId: string;
     name: string;
     category: IngredientCategory;
+    subCategory: string;
+    flavor?: string | null;
     abv: number;
     amountCl: number;
     amountOz: number;
@@ -90,10 +142,22 @@ export interface DrinkDetail {
     ingredients: DrinkIngredientDetail[];
 }
 
+export interface ReviewItem {
+    id: string;
+    drinkId: string;
+    userId: string;
+    username: string;
+    rating: number;
+    comment?: string;
+    createdAt: string;
+}
+
 export interface MissingIngredient {
     id: string;
     name: string;
     category: string;
+    subCategory: string;
+    flavor?: string | null;
 }
 
 export interface DrinkMatchResult {
@@ -195,4 +259,37 @@ export interface AdminUserBacOverview {
     safetyLevel: BacSafetyLevel;
     estimatedSoberAt?: string;
     totalDrinksLast12h: number;
+}
+
+export interface LogCustomDrinkRequest {
+    customName?: string;
+    consumedAt?: string;
+    notes?: string;
+    components: CustomIngredientDose[];
+}
+
+export interface CreateIngredientRequest {
+    name: string;
+    category: IngredientCategory;
+    subCategory: string;
+    flavor?: string | null;
+    abv: number;
+    isAvailableInBar?: boolean;
+    description?: string;
+}
+
+export interface CreateDrinkIngredientInput {
+    ingredientId: string;
+    amountCl: number;
+    displayUnitNote?: string;
+    isOptional: boolean;
+    sortOrder: number;
+}
+
+export interface CreateDrinkRequest {
+    name: string;
+    description: string;
+    glassType?: string;
+    preparationSteps: string[];
+    ingredients: CreateDrinkIngredientInput[];
 }
