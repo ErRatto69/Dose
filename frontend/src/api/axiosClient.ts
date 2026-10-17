@@ -1,10 +1,7 @@
 import axios from 'axios';
 
-const base = import.meta.env.BASE_URL || '/';
-const normalizedBase = base.endsWith('/') ? base : `${base}/`;
-
 export const axiosClient = axios.create({
-    baseURL: `${normalizedBase}api`,
+    baseURL: '/api',
     headers: {
         'Content-Type': 'application/json',
     },

@@ -45,7 +45,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
 export default function App() {
     return (
         <QueryClientProvider client={queryClient}>
-            <BrowserRouter basename={import.meta.env.BASE_URL}>
+            <BrowserRouter>
                 <Routes>
                     {/* Public Authentication Route */}
                     <Route path="/login" element={<LoginPage />} />
