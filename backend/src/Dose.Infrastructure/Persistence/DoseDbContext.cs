@@ -21,7 +21,11 @@ public class DoseDbContext(DbContextOptions<DoseDbContext> options)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Apply all entity type configurations automatically from this assembly
+        // Instruct Npgsql to generate "CREATE EXTENSION IF NOT EXISTS ..." at migration start
+        modelBuilder.HasPostgresExtension("pgcrypto");
+        modelBuilder.HasPostgresExtension("pg_trgm");
+
+        // Apply all entity configurations
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DoseDbContext).Assembly);
     }
 }

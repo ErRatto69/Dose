@@ -21,11 +21,14 @@ public class IngredientsEndpoints : IEndpoint
             var ingredients = await context.Ingredients
                 .AsNoTracking()
                 .OrderBy(i => i.Category)
+                .ThenBy(i => i.SubCategory)
                 .ThenBy(i => i.Name)
                 .Select(i => new IngredientDto(
                     i.Id,
                     i.Name,
                     i.Category,
+                    i.SubCategory,
+                    i.Flavor,
                     i.Abv,
                     i.IsAvailableInBar,
                     i.Description,
@@ -42,21 +45,29 @@ public class IngredientsEndpoints : IEndpoint
             if (string.IsNullOrWhiteSpace(q))
                 return Results.Ok(Array.Empty<IngredientSuggestionDto>());
 
-            string query = q.Trim();
+            string normalizedQuery = RemoveDiacritics(q.Trim());
 
-            var suggestions = await context.Ingredients
+            var allIngredients = await context.Ingredients
                 .AsNoTracking()
-                .Where(i => EF.Functions.ILike(i.Name, $"%{query}%"))
                 .OrderBy(i => i.Name)
-                .Take(10)
+                .ToListAsync(ct);
+
+            var suggestions = allIngredients
+                .Where(i =>
+                    RemoveDiacritics(i.Name).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase) ||
+                    RemoveDiacritics(i.SubCategory).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase) ||
+                    (i.Flavor != null && RemoveDiacritics(i.Flavor).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)))
+                .Take(12)
                 .Select(i => new IngredientSuggestionDto(
                     i.Id,
                     i.Name,
                     i.Category,
+                    i.SubCategory,
+                    i.Flavor,
                     i.Abv,
                     i.IsAvailableInBar
                 ))
-                .ToListAsync(ct);
+                .ToList();
 
             return Results.Ok(suggestions);
         })
@@ -75,19 +86,23 @@ public class IngredientsEndpoints : IEndpoint
             var ingredient = new Ingredient(
                 command.Name,
                 command.Category,
+                command.SubCategory,
                 command.Abv,
+                command.Flavor,
                 command.IsAvailableInBar,
                 command.Description,
                 command.ImageUrl
             );
 
-            await context.Ingredients.AddAsync(ingredient, ct);
+            await context.Ingredients.AddAsync(ingredient, cancellationToken: ct);
             await context.SaveChangesAsync(ct);
 
             return Results.Created($"/api/ingredients/{ingredient.Id}", new IngredientDto(
                 ingredient.Id,
                 ingredient.Name,
                 ingredient.Category,
+                ingredient.SubCategory,
+                ingredient.Flavor,
                 ingredient.Abv,
                 ingredient.IsAvailableInBar,
                 ingredient.Description,
@@ -111,5 +126,18 @@ public class IngredientsEndpoints : IEndpoint
             return Results.NoContent();
         })
         .RequireAuthorization("RequireBartenderOrAdmin");
+    }
+    
+    private static string RemoveDiacritics(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var normalized = text.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder(normalized.Length);
+        foreach (var c in normalized)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        }
+        return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
     }
 }

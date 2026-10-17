@@ -30,6 +30,8 @@ public class CabinetEndpoints : IEndpoint
                     c.Ingredient.Id,
                     c.Ingredient.Name,
                     c.Ingredient.Category,
+                    c.Ingredient.SubCategory,
+                    c.Ingredient.Flavor,
                     c.Ingredient.Abv,
                     c.Ingredient.IsAvailableInBar,
                     c.Ingredient.Description,
@@ -74,17 +76,28 @@ public class CabinetEndpoints : IEndpoint
         {
             var userId = currentUserService.UserId ?? throw new UnauthorizedException();
 
-            var userCabinetIds = await context.CabinetItems
-                .Where(c => c.UserId == userId)
-                .Select(c => c.IngredientId)
-                .ToListAsync(ct);
+            var targetIds = new HashSet<Guid>();
 
-            var targetIds = new HashSet<Guid>(userCabinetIds);
-            if (additionalIngredients?.IngredientIds is not null)
+            if (additionalIngredients?.IngredientIds is not null && additionalIngredients.IngredientIds.Count > 0)
             {
                 foreach (var id in additionalIngredients.IngredientIds)
                     targetIds.Add(id);
             }
+            else
+            {
+                var userCabinetIds = await context.CabinetItems
+                    .Where(c => c.UserId == userId)
+                    .Select(c => c.IngredientId)
+                    .ToListAsync(ct);
+
+                foreach (var id in userCabinetIds)
+                    targetIds.Add(id);
+            }
+
+            var availableIngredients = await context.Ingredients
+                .AsNoTracking()
+                .Where(i => targetIds.Contains(i.Id))
+                .ToListAsync(ct);
 
             var publishedDrinks = await context.Drinks
                 .AsNoTracking()
@@ -93,8 +106,7 @@ public class CabinetEndpoints : IEndpoint
                     .ThenInclude(di => di.Ingredient)
                 .ToListAsync(ct);
 
-            var matches = recipeMatcher.MatchDrinks(publishedDrinks, targetIds, maxMissingAllowed: 2);
-
+            var matches = recipeMatcher.MatchDrinks(publishedDrinks, availableIngredients, maxMissingAllowed: 2);
             return Results.Ok(matches);
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");

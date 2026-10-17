@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Dose.Api.Extensions;
 using Dose.Api.Middleware;
 using Dose.Application;
@@ -8,6 +9,12 @@ using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 0. Configure JSON Serialization to serialize Enums as strings ("Sober", "Admin", "Male", etc.)
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 // 1. Dependency Injection Registration across Clean Architecture Layers
 builder.Services.AddApplicationServices();
@@ -61,5 +68,4 @@ app.MapDiscoveredEndpoints();
 
 app.Run();
 
-// Assembly marker for Integration Testing (WebApplicationFactory)
 public partial class Program { }

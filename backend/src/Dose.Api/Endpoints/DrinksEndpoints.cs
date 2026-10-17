@@ -7,7 +7,6 @@ using Dose.Application.Features.Drinks.Dtos;
 using Dose.Application.Services;
 using Dose.Domain.Common;
 using Dose.Domain.Entities;
-using Dose.Domain.Enums;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using ValidationException = Dose.Application.Common.Exceptions.ValidationException;
@@ -65,6 +64,8 @@ public class DrinksEndpoints : IEndpoint
                     di.IngredientId,
                     di.Ingredient.Name,
                     di.Ingredient.Category.ToString(),
+                    di.Ingredient.SubCategory,
+                    di.Ingredient.Flavor,
                     di.Ingredient.Abv,
                     di.AmountCl,
                     Math.Round(di.AmountCl * ClToOzFactor, 2),
@@ -127,7 +128,6 @@ public class DrinksEndpoints : IEndpoint
             });
 
             var calculatedMetrics = strengthCalculator.CalculateMetrics(recipeComponents);
-
             string stepsJson = JsonSerializer.Serialize(command.PreparationSteps);
 
             var newDrink = new Drink(
@@ -138,6 +138,7 @@ public class DrinksEndpoints : IEndpoint
                 command.ImageUrl,
                 currentUserService.UserId
             );
+
             newDrink.UpdateCachedMetrics(calculatedMetrics);
 
             await context.Drinks.AddAsync(newDrink, ct);

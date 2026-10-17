@@ -7,7 +7,8 @@ public record UpdateBiometricsCommand(
     decimal WeightKg,
     decimal HeightCm,
     BiologicalSex Sex,
-    int? BirthYear
+    int? BirthYear,
+    VolumeUnit? PreferredUnit = null
 );
 
 public class UpdateBiometricsCommandValidator : AbstractValidator<UpdateBiometricsCommand>

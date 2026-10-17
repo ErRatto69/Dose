@@ -1,10 +1,10 @@
-﻿using Dose.Application.Common.Interfaces;
-using Dose.Application.Services;
+﻿using Dose.Application.Services;
 using Dose.Domain.Entities;
 using Dose.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Dose.Application.Common.Interfaces;
 
 namespace Dose.Infrastructure.Persistence.Seeding;
 
@@ -17,7 +17,14 @@ public class DatabaseSeeder(
 {
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        // 1. Seed Ranking Tiers
+        // 1. Ensure required columns and index exist on PostgreSQL
+        await context.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS "SubCategory" character varying(60) NOT NULL DEFAULT 'Generic';
+            ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS "Flavor" character varying(60) NULL;
+            CREATE INDEX IF NOT EXISTS "IX_ingredients_SubCategory_Flavor" ON ingredients ("SubCategory", "Flavor");
+            """, cancellationToken);
+
+        // 2. Seed Ranking Tiers
         if (!await context.RankingTiers.AnyAsync(cancellationToken))
         {
             logger.LogInformation("Seeding initial ranking tiers...");
@@ -25,7 +32,7 @@ public class DatabaseSeeder(
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        // 2. Seed Default Admin User
+        // 3. Seed Default Admin User
         if (!await context.Users.AnyAsync(u => u.Role == UserRole.Admin, cancellationToken))
         {
             logger.LogInformation("Seeding default admin user...");
@@ -48,22 +55,196 @@ public class DatabaseSeeder(
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        // 3. Seed Ingredients and Classic Drinks
-        if (!await context.Drinks.AnyAsync(cancellationToken))
+        // 4. Seed or Update Classic Ingredients and Drinks
+        var (seedIngredients, seedRecipes) = CocktailIbaSeed.GetSeedData(strengthCalculator);
+        var existingIngredients = await context.Ingredients.ToListAsync(cancellationToken);
+
+        // Add any missing seed ingredients first
+        foreach (var seedIng in seedIngredients)
         {
-            logger.LogInformation("Seeding core ingredients and IBA classic drinks...");
-            var (ingredients, recipes) = CocktailIbaSeed.GetSeedData(strengthCalculator);
-
-            await context.Ingredients.AddRangeAsync(ingredients, cancellationToken);
-            await context.SaveChangesAsync(cancellationToken);
-
-            foreach (var (drink, components) in recipes)
+            if (!existingIngredients.Any(i => i.Name.Equals(seedIng.Name, StringComparison.OrdinalIgnoreCase)))
             {
-                await context.Drinks.AddAsync(drink, cancellationToken);
-                await context.DrinkIngredients.AddRangeAsync(components, cancellationToken);
+                await context.Ingredients.AddAsync(seedIng, cancellationToken);
+                existingIngredients.Add(seedIng);
+            }
+        }
+        await context.SaveChangesAsync(cancellationToken);
+
+        // Remove legacy generic "Vodka" if branded "Absolut Vodka" exists
+        var genericVodka = existingIngredients.FirstOrDefault(i => i.Name.Equals("Vodka", StringComparison.OrdinalIgnoreCase));
+        var absolutVodka = existingIngredients.FirstOrDefault(i => i.Name.Equals("Absolut Vodka", StringComparison.OrdinalIgnoreCase));
+
+        if (genericVodka is not null && absolutVodka is not null && genericVodka.Id != absolutVodka.Id)
+        {
+            var linksToMove = await context.DrinkIngredients
+                .Where(di => di.IngredientId == genericVodka.Id)
+                .ToListAsync(cancellationToken);
+
+            foreach (var link in linksToMove)
+            {
+                bool alreadyHasAbsolut = await context.DrinkIngredients
+                    .AnyAsync(di => di.DrinkId == link.DrinkId && di.IngredientId == absolutVodka.Id, cancellationToken);
+
+                context.DrinkIngredients.Remove(link);
+                if (!alreadyHasAbsolut)
+                {
+                    await context.DrinkIngredients.AddAsync(
+                        new DrinkIngredient(link.DrinkId, absolutVodka.Id, link.AmountCl, link.DisplayUnitNote, link.IsOptional, link.SortOrder),
+                        cancellationToken);
+                }
             }
 
+            context.Ingredients.Remove(genericVodka);
+            existingIngredients.Remove(genericVodka);
             await context.SaveChangesAsync(cancellationToken);
         }
+
+        // Repair legacy ingredients safely
+        foreach (var existing in existingIngredients)
+        {
+            if (string.IsNullOrWhiteSpace(existing.SubCategory) ||
+                existing.SubCategory.Equals("Generic", StringComparison.OrdinalIgnoreCase) ||
+                existing.SubCategory.Equals("Spirit", StringComparison.OrdinalIgnoreCase) ||
+                existing.SubCategory.Equals("Mixer", StringComparison.OrdinalIgnoreCase))
+            {
+                var (subCat, flavor, newCat) = InferSubCategoryAndFlavor(existing.Name, existing.Abv, existing.Category);
+                existing.SetDetails(existing.Name, newCat, subCat, existing.Abv, flavor ?? existing.Flavor);
+            }
+        }
+        await context.SaveChangesAsync(cancellationToken);
+
+        // 5. Seed Classic Recipes
+        var existingDrinkNames = await context.Drinks.Select(d => d.Name).ToListAsync(cancellationToken);
+
+        foreach (var (drink, components) in seedRecipes)
+        {
+            if (existingDrinkNames.Any(n => n.Equals(drink.Name, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            await context.Drinks.AddAsync(drink, cancellationToken);
+
+            foreach (var comp in components)
+            {
+                var matchedDbIng = existingIngredients.First(i =>
+                    i.Name.Equals(comp.Ingredient.Name, StringComparison.OrdinalIgnoreCase) ||
+                    (i.SubCategory.Equals(comp.Ingredient.SubCategory, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(i.Flavor ?? "", comp.Ingredient.Flavor ?? "", StringComparison.OrdinalIgnoreCase)));
+
+                await context.DrinkIngredients.AddAsync(new DrinkIngredient(
+                    drink.Id,
+                    matchedDbIng.Id,
+                    comp.AmountCl,
+                    comp.DisplayUnitNote,
+                    comp.IsOptional,
+                    comp.SortOrder
+                ), cancellationToken);
+            }
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static (string SubCategory, string? Flavor, IngredientCategory Category) InferSubCategoryAndFlavor(
+        string name,
+        decimal abv,
+        IngredientCategory currentCat)
+    {
+        string lower = name.ToLowerInvariant();
+
+        // 1. Non-alcoholic ingredients (ABV == 0) must NEVER be assigned to Spirit, Liqueur, Wine, or Beer
+        if (abv <= 0)
+        {
+            if (lower.Contains("ginger"))
+                return ("Ginger Beer", "Ginger", IngredientCategory.Mixer);
+            if (lower.Contains("tonic"))
+                return ("Tonic Water", null, IngredientCategory.Mixer);
+            if (lower.Contains("cola"))
+                return ("Cola", "Cola", IngredientCategory.Mixer);
+            if (lower.Contains("energy") || lower.Contains("bull"))
+                return ("Energy Drink", null, IngredientCategory.Mixer);
+            if (lower.Contains("soda") || lower.Contains("seltz"))
+                return ("Soda Water", null, IngredientCategory.Mixer);
+            if (lower.Contains("coffee") || lower.Contains("espresso") || lower.Contains("caffè"))
+                return ("Espresso", "Coffee", IngredientCategory.Mixer);
+            if (lower.Contains("syrup") || lower.Contains("sugar") || lower.Contains("sciroppo"))
+                return ("Sugar Syrup", "Sugar", IngredientCategory.Syrup);
+            if (lower.Contains("slice") || lower.Contains("wheel") || lower.Contains("leaves") || currentCat == IngredientCategory.Garnish)
+                return ("Citrus Garnish", lower.Contains("orange") ? "Orange" : lower.Contains("lime") ? "Lime" : null, IngredientCategory.Garnish);
+            if (lower.Contains("lime"))
+                return ("Citrus Juice", "Lime", IngredientCategory.Mixer);
+            if (lower.Contains("lemon"))
+                return ("Citrus Juice", "Lemon", IngredientCategory.Mixer);
+            if (lower.Contains("orange"))
+                return ("Citrus Juice", "Orange", IngredientCategory.Mixer);
+            if (lower.Contains("cranberry"))
+                return ("Fruit Juice", "Cranberry", IngredientCategory.Mixer);
+
+            var safeNonAlcoholicCat = currentCat is IngredientCategory.Syrup or IngredientCategory.Garnish or IngredientCategory.Pantry
+                ? currentCat
+                : IngredientCategory.Mixer;
+
+            return (name, null, safeNonAlcoholicCat);
+        }
+
+        // 2. Alcoholic ingredients (ABV > 0)
+        if (lower.Contains("vodka"))
+        {
+            string? flavor = lower.Contains("peach") || lower.Contains("pesca") ? "Peach"
+                : lower.Contains("straw") || lower.Contains("fragola") ? "Strawberry"
+                : null;
+            return ("Vodka", flavor, IngredientCategory.Spirit);
+        }
+
+        // Check Gin ONLY if it's not Ginger!
+        if (lower.Contains("gin") && !lower.Contains("ginger"))
+        {
+            string? flavor = lower.Contains("lemon") || lower.Contains("limone") ? "Lemon" : null;
+            return ("Gin", flavor, IngredientCategory.Spirit);
+        }
+
+        if (lower.Contains("rum"))
+        {
+            bool isDark = lower.Contains("dark") || lower.Contains("black") || lower.Contains("spiced") || lower.Contains("scuro");
+            return (isDark ? "Dark Rum" : "White Rum", isDark ? "Spiced" : null, IngredientCategory.Spirit);
+        }
+
+        if (lower.Contains("tequila"))
+            return ("Tequila", null, IngredientCategory.Spirit);
+
+        if (lower.Contains("jager") || lower.Contains("jäger"))
+            return ("Herbal Liqueur", "Herbs", IngredientCategory.Liqueur);
+
+        if (lower.Contains("campari"))
+            return ("Bitter", "Bitter Herbs", IngredientCategory.Liqueur);
+
+        if (lower.Contains("aperol"))
+            return ("Aperitivo Bitter", "Bitter Orange", IngredientCategory.Liqueur);
+
+        if (lower.Contains("vermouth"))
+            return ("Sweet Vermouth", null, IngredientCategory.Liqueur);
+
+        if (lower.Contains("triple sec") || lower.Contains("cointreau"))
+            return ("Liqueur", "Orange", IngredientCategory.Liqueur);
+
+        if (lower.Contains("kahlua") || lower.Contains("borghetti") || (lower.Contains("coffee") && lower.Contains("liqueur")))
+            return ("Liqueur", "Coffee", IngredientCategory.Liqueur);
+
+        if (lower.Contains("limoncello"))
+            return ("Liqueur", "Lemon", IngredientCategory.Liqueur);
+
+        if (lower.Contains("peachtree") || lower.Contains("schnapps"))
+            return ("Liqueur", "Peach", IngredientCategory.Liqueur);
+
+        if (lower.Contains("prosecco") || lower.Contains("wine") || lower.Contains("spumante") || lower.Contains("champagne"))
+            return ("Sparkling Wine", null, IngredientCategory.Wine);
+
+        if (lower.Contains("beer") || lower.Contains("birra") || lower.Contains("lager") || lower.Contains("ale"))
+            return ("Lager Beer", null, IngredientCategory.Beer);
+
+        var safeAlcoholicCat = currentCat is IngredientCategory.Liqueur or IngredientCategory.Wine or IngredientCategory.Beer
+            ? currentCat
+            : IngredientCategory.Spirit;
+
+        return (name, null, safeAlcoholicCat);
     }
 }

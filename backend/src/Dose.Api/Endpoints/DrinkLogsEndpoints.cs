@@ -3,8 +3,8 @@ using Dose.Application.Common.Exceptions;
 using Dose.Application.Common.Interfaces;
 using Dose.Application.Features.DrinkLogs.Dtos;
 using Dose.Application.Services;
+using Dose.Domain.Common;
 using Dose.Domain.Entities;
-using Dose.Domain.Enums;
 using Dose.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,6 +16,7 @@ public class DrinkLogsEndpoints : IEndpoint
     {
         var group = app.MapGroup("/api/drinks").WithTags("Drink Logging");
 
+        // 1. Log an existing catalog drink (with optional custom doses)
         group.MapPost("/{id:guid}/log", async (
             Guid id,
             LogDrinkRequestDto request,
@@ -44,17 +45,17 @@ public class DrinkLogsEndpoints : IEndpoint
 
             if (isCustomized)
             {
-                var customIngredientIds = request.CustomComponents!.Select(c => c.IngredientId).ToList();
+                var customIngredientIds = request.CustomComponents!.Select(c => c.IngredientId).Distinct().ToList();
                 var dbIngredients = await context.Ingredients
                     .Where(i => customIngredientIds.Contains(i.Id))
                     .ToDictionaryAsync(i => i.Id, ct);
 
                 foreach (var component in request.CustomComponents!)
                 {
-                    if (!dbIngredients.TryGetValue(component.IngredientId, out var ing))
+                    if (component.AmountCl <= 0 || !dbIngredients.TryGetValue(component.IngredientId, out var ing))
                         continue;
 
-                    decimal pureAlcoholGrams = ing.Category == IngredientCategory.Spirit
+                    decimal pureAlcoholGrams = ing.Abv > 0
                         ? PureAlcohol.FromClAndAbv(component.AmountCl, ing.Abv).Grams
                         : 0.00m;
 
@@ -74,7 +75,7 @@ public class DrinkLogsEndpoints : IEndpoint
             {
                 foreach (var di in originalDrink.DrinkIngredients)
                 {
-                    decimal pureAlcoholGrams = di.Ingredient.Category == IngredientCategory.Spirit
+                    decimal pureAlcoholGrams = di.Ingredient.Abv > 0
                         ? PureAlcohol.FromClAndAbv(di.AmountCl, di.Ingredient.Abv).Grams
                         : 0.00m;
 
@@ -92,7 +93,7 @@ public class DrinkLogsEndpoints : IEndpoint
             }
 
             var metrics = strengthCalculator.CalculateMetrics(strengthInputs);
-            string snapshotName = isCustomized ? $"{originalDrink.Name} (Custom Dose)" : originalDrink.Name;
+            string snapshotName = isCustomized ? $"{originalDrink.Name} (Custom)" : originalDrink.Name;
 
             var drinkLog = new DrinkLog(
                 userId,
@@ -107,33 +108,14 @@ public class DrinkLogsEndpoints : IEndpoint
             );
 
             foreach (var item in logItemsToCreate)
-            {
                 drinkLog.AddItem(item);
-            }
 
             await context.DrinkLogs.AddAsync(drinkLog, ct);
             await context.SaveChangesAsync(ct);
 
-            // Compute updated rolling BAC for the last 12 hours
-            DateTimeOffset now = dateTimeProvider.UtcNow;
-            DateTimeOffset twelveHoursAgo = now.AddHours(-12);
+            var bacResult = await ComputeCurrentUserBacAsync(user, context, bacCalculator, dateTimeProvider, ct);
 
-            var pastEvents = await context.DrinkLogs
-                .AsNoTracking()
-                .Where(l => l.UserId == userId && l.ConsumedAt >= twelveHoursAgo && l.ConsumedAt <= now)
-                .Select(l => new DrinkEventInput(l.Id, l.DrinkNameSnapshot, l.ConsumedAt, l.TotalPureAlcoholGrams))
-                .ToListAsync(ct);
-
-            var bacResult = bacCalculator.ComputeRollingBac(
-                user.WeightKg,
-                user.HeightCm,
-                user.Sex,
-                user.BirthYear,
-                pastEvents,
-                now
-            );
-
-            var response = new DrinkLogResponseDto(
+            return Results.Created($"/api/drink-logs/{drinkLog.Id}", new DrinkLogResponseDto(
                 drinkLog.Id,
                 drinkLog.DrinkNameSnapshot,
                 drinkLog.IsCustomized,
@@ -145,10 +127,134 @@ public class DrinkLogsEndpoints : IEndpoint
                     metrics.BottleScore1To10
                 ),
                 bacResult
-            );
-
-            return Results.Created($"/api/drink-logs/{drinkLog.Id}", response);
+            ));
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
+
+        // 2. Log a Quick Pour / Shot / Custom Drink (Not saved in Drinks Catalog)
+        group.MapPost("/custom/log", async (
+            LogCustomDrinkRequestDto request,
+            ICurrentUserService currentUserService,
+            IApplicationDbContext context,
+            IDrinkStrengthCalculator strengthCalculator,
+            IBacCalculator bacCalculator,
+            IDateTimeProvider dateTimeProvider,
+            CancellationToken ct) =>
+        {
+            var userId = currentUserService.UserId ?? throw new UnauthorizedException();
+            var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+                ?? throw new NotFoundException(nameof(User), userId);
+
+            if (request.Components is null || request.Components.Count == 0)
+                throw new DomainException("Please select at least one ingredient to log.");
+
+            var ingredientIds = request.Components.Select(c => c.IngredientId).Distinct().ToList();
+            var dbIngredients = await context.Ingredients
+                .Where(i => ingredientIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, ct);
+
+            var logItemsToCreate = new List<DrinkLogItem>();
+            var strengthInputs = new List<RecipeComponentInput>();
+            var usedNames = new List<string>();
+
+            foreach (var comp in request.Components)
+            {
+                if (comp.AmountCl <= 0 || !dbIngredients.TryGetValue(comp.IngredientId, out var ing))
+                    continue;
+
+                decimal pureAlcoholGrams = ing.Abv > 0
+                    ? PureAlcohol.FromClAndAbv(comp.AmountCl, ing.Abv).Grams
+                    : 0.00m;
+
+                logItemsToCreate.Add(new DrinkLogItem(
+                    ing.Id,
+                    ing.Name,
+                    ing.Category,
+                    ing.Abv,
+                    comp.AmountCl,
+                    pureAlcoholGrams
+                ));
+
+                strengthInputs.Add(new RecipeComponentInput(ing.Category, comp.AmountCl, ing.Abv));
+                usedNames.Add(ing.Name);
+            }
+
+            if (logItemsToCreate.Count == 0)
+                throw new DomainException("Total volume must be greater than zero.");
+
+            var metrics = strengthCalculator.CalculateMetrics(strengthInputs);
+
+            string generatedName = !string.IsNullOrWhiteSpace(request.CustomName)
+                ? request.CustomName.Trim()
+                : usedNames.Count == 1
+                    ? $"{usedNames[0]} ({metrics.TotalLiquidVolumeCl:0.#} cl)"
+                    : string.Join(" + ", usedNames.Take(2)) + (usedNames.Count > 2 ? $" +{usedNames.Count - 2}" : "");
+
+            if (generatedName.Length > 120)
+                generatedName = generatedName[..120];
+
+            DateTimeOffset consumptionTime = request.ConsumedAt ?? dateTimeProvider.UtcNow;
+
+            var drinkLog = new DrinkLog(
+                userId,
+                drinkId: null, // Not tied to a catalog recipe
+                generatedName,
+                isCustomized: true,
+                consumptionTime,
+                metrics.TotalLiquidVolumeCl,
+                metrics.FinalAbvPercent,
+                metrics.PureAlcohol,
+                request.Notes
+            );
+
+            foreach (var item in logItemsToCreate)
+                drinkLog.AddItem(item);
+
+            await context.DrinkLogs.AddAsync(drinkLog, ct);
+            await context.SaveChangesAsync(ct);
+
+            var bacResult = await ComputeCurrentUserBacAsync(user, context, bacCalculator, dateTimeProvider, ct);
+
+            return Results.Created($"/api/drink-logs/{drinkLog.Id}", new DrinkLogResponseDto(
+                drinkLog.Id,
+                drinkLog.DrinkNameSnapshot,
+                drinkLog.IsCustomized,
+                drinkLog.ConsumedAt,
+                new LoggedMetricsDto(
+                    drinkLog.TotalVolumeCl,
+                    drinkLog.EffectiveAbv,
+                    drinkLog.TotalPureAlcoholGrams,
+                    metrics.BottleScore1To10
+                ),
+                bacResult
+            ));
+        })
+        .RequireAuthorization("RequireAuthenticatedDrinker");
+    }
+
+    private static async Task<BacCalculationResult> ComputeCurrentUserBacAsync(
+        User user,
+        IApplicationDbContext context,
+        IBacCalculator bacCalculator,
+        IDateTimeProvider dateTimeProvider,
+        CancellationToken ct)
+    {
+        DateTimeOffset now = dateTimeProvider.UtcNow;
+        DateTimeOffset twelveHoursAgo = now.AddHours(-12);
+
+        var pastEvents = await context.DrinkLogs
+            .AsNoTracking()
+            .Where(l => l.UserId == user.Id && l.ConsumedAt >= twelveHoursAgo && l.ConsumedAt <= now)
+            .Select(l => new DrinkEventInput(l.Id, l.DrinkNameSnapshot, l.ConsumedAt, l.TotalPureAlcoholGrams))
+            .ToListAsync(ct);
+
+        return bacCalculator.ComputeRollingBac(
+            user.WeightKg,
+            user.HeightCm,
+            user.Sex,
+            user.BirthYear,
+            pastEvents,
+            now
+        );
     }
 }

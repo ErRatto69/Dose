@@ -2,7 +2,13 @@
 
 namespace Dose.Application.Services;
 
-public record MissingIngredientDto(Guid Id, string Name, string Category);
+public record MissingIngredientDto(
+    Guid Id,
+    string Name,
+    string Category,
+    string SubCategory,
+    string? Flavor
+);
 
 public record DrinkMatchResultDto(
     Guid DrinkId,
@@ -21,6 +27,6 @@ public interface IRecipeMatcher
 {
     IReadOnlyList<DrinkMatchResultDto> MatchDrinks(
         IEnumerable<Drink> drinks,
-        ISet<Guid> availableIngredientIds,
+        IReadOnlyCollection<Ingredient> availableIngredients,
         int maxMissingAllowed = 2);
 }

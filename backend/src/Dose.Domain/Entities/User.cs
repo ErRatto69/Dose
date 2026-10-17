@@ -9,7 +9,6 @@ public class User : BaseEntity
     public string Email { get; private set; } = null!;
     public string PasswordHash { get; private set; } = null!;
     public UserRole Role { get; private set; }
-
     public decimal WeightKg { get; private set; }
     public decimal HeightCm { get; private set; }
     public BiologicalSex Sex { get; private set; }
@@ -22,7 +21,6 @@ public class User : BaseEntity
     public virtual ICollection<Review> Reviews { get; private set; } = new List<Review>();
     public virtual ICollection<DrinkLog> DrinkLogs { get; private set; } = new List<DrinkLog>();
 
-    // Costruttore per EF Core
     protected User() { }
 
     public User(
@@ -44,15 +42,33 @@ public class User : BaseEntity
 
     public void SetCredentials(string username, string email, string passwordHash)
     {
-        if (string.IsNullOrWhiteSpace(username))
-            throw new DomainException("The username cannot be null or empty.");
-        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
-            throw new DomainException("The email address is not valid.");
+        UpdateIdentity(username, email);
+
         if (string.IsNullOrWhiteSpace(passwordHash))
             throw new DomainException("The password hash cannot be null or empty.");
 
+        PasswordHash = passwordHash;
+        UpdateTimestamp();
+    }
+
+    public void UpdateIdentity(string username, string email)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            throw new DomainException("The username cannot be null or empty.");
+
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+            throw new DomainException("The email address is not valid.");
+
         Username = username.Trim();
         Email = email.Trim().ToLowerInvariant();
+        UpdateTimestamp();
+    }
+
+    public void UpdatePasswordHash(string passwordHash)
+    {
+        if (string.IsNullOrWhiteSpace(passwordHash))
+            throw new DomainException("The password hash cannot be null or empty.");
+
         PasswordHash = passwordHash;
         UpdateTimestamp();
     }
@@ -61,8 +77,10 @@ public class User : BaseEntity
     {
         if (weightKg is < 30 or > 250)
             throw new DomainException("The bodyweight must be between 30kg and 250kg.");
+
         if (heightCm is < 100 or > 230)
             throw new DomainException("The height must be between 100cm and 230cm.");
+
         if (birthYear.HasValue && (birthYear < 1920 || birthYear > DateTimeOffset.UtcNow.Year - 16))
             throw new DomainException("Birthdate is not valid.");
 

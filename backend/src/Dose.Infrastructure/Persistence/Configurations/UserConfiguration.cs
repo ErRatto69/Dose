@@ -41,8 +41,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.ToTable(t =>
         {
-            t.HasCheckConstraint("chk_users_weight", "weight_kg BETWEEN 30.00 AND 250.00");
-            t.HasCheckConstraint("chk_users_height", "height_cm BETWEEN 100.00 AND 230.00");
+            t.HasCheckConstraint("chk_users_weight", "\"WeightKg\" BETWEEN 30.00 AND 250.00");
+            t.HasCheckConstraint("chk_users_height", "\"HeightCm\" BETWEEN 100.00 AND 230.00");
         });
     }
 }

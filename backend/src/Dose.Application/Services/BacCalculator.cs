@@ -23,7 +23,6 @@ public class BacCalculator : IBacCalculator
             ? 2.447m - (0.09516m * age) + (0.1074m * heightCm) + (0.3362m * weightKg)
             : -2.097m + (0.1069m * heightCm) + (0.2466m * weightKg);
 
-        // Fallback to standard Widmark distribution volume if inputs yield extreme values
         if (tbw <= 10m)
         {
             decimal widmarkR = sex == BiologicalSex.Male ? 0.68m : 0.55m;
@@ -48,62 +47,95 @@ public class BacCalculator : IBacCalculator
             .OrderBy(e => e.ConsumedAt)
             .ToList();
 
-        decimal currentBac = 0m; // in g/dL
-        DateTimeOffset? lastTimestamp = null;
-        var timeline = new List<BacTimelinePoint>();
-
-        foreach (var ev in orderedEvents)
+        decimal EvaluateBacAt(DateTimeOffset targetTime)
         {
-            if (lastTimestamp.HasValue)
+            decimal bac = 0m;
+            DateTimeOffset? lastTime = null;
+
+            foreach (var ev in orderedEvents.Where(e => e.ConsumedAt <= targetTime))
             {
-                decimal elapsedHours = (decimal)(ev.ConsumedAt - lastTimestamp.Value).TotalHours;
-                if (elapsedHours > 0)
+                if (lastTime.HasValue)
                 {
-                    currentBac = Math.Max(0m, currentBac - (BetaEliminationPerHour * elapsedHours));
+                    decimal elapsedHours = (decimal)(ev.ConsumedAt - lastTime.Value).TotalHours;
+                    if (elapsedHours > 0)
+                        bac = Math.Max(0m, bac - (BetaEliminationPerHour * elapsedHours));
                 }
+
+                decimal deltaBac = (ev.PureAlcoholGrams * (BloodWaterFraction / 10m)) / tbwLiters;
+                bac += deltaBac;
+                lastTime = ev.ConsumedAt;
             }
 
-            // Timeline node right before intake
-            timeline.Add(new BacTimelinePoint(
-                ev.ConsumedAt,
-                Math.Round(currentBac, 4),
-                Math.Round(currentBac * 10m, 3)
-            ));
-
-            // Instantaneous peak increment
-            decimal deltaBac = (ev.PureAlcoholGrams * (BloodWaterFraction / 10m)) / tbwLiters;
-            currentBac += deltaBac;
-            lastTimestamp = ev.ConsumedAt;
-
-            // Timeline node right after intake
-            timeline.Add(new BacTimelinePoint(
-                ev.ConsumedAt,
-                Math.Round(currentBac, 4),
-                Math.Round(currentBac * 10m, 3)
-            ));
-        }
-
-        // Metabolic decay from the latest logged drink until current instant
-        if (lastTimestamp.HasValue)
-        {
-            decimal hoursSinceLastDrink = (decimal)(now - lastTimestamp.Value).TotalHours;
-            if (hoursSinceLastDrink > 0)
+            if (lastTime.HasValue)
             {
-                currentBac = Math.Max(0m, currentBac - (BetaEliminationPerHour * hoursSinceLastDrink));
+                decimal hoursAfterLast = (decimal)(targetTime - lastTime.Value).TotalHours;
+                if (hoursAfterLast > 0)
+                    bac = Math.Max(0m, bac - (BetaEliminationPerHour * hoursAfterLast));
             }
+
+            return Math.Round(bac, 4);
         }
 
-        currentBac = Math.Round(currentBac, 4);
+        decimal currentBac = EvaluateBacAt(now);
         decimal currentBacGramsPerLiter = Math.Round(currentBac * 10m, 3);
-
-        timeline.Add(new BacTimelinePoint(now, currentBac, currentBacGramsPerLiter));
 
         DateTimeOffset? estimatedSoberAt = null;
         if (currentBac > 0m)
         {
             double hoursToZero = (double)(currentBac / BetaEliminationPerHour);
             estimatedSoberAt = now.AddHours(hoursToZero);
-            timeline.Add(new BacTimelinePoint(estimatedSoberAt.Value, 0m, 0m));
+        }
+
+        var timeline = new List<BacTimelinePoint>();
+
+        if (orderedEvents.Count == 0)
+        {
+            for (int i = 4; i >= 0; i--)
+            {
+                var t = now.AddMinutes(-i * 30);
+                timeline.Add(new BacTimelinePoint(t, 0m, 0m));
+            }
+        }
+        else
+        {
+            DateTimeOffset startWindow = orderedEvents.First().ConsumedAt.AddMinutes(-15);
+            DateTimeOffset endWindow = estimatedSoberAt ?? now.AddMinutes(30);
+
+            double totalSpanMinutes = Math.Max(30, (endWindow - startWindow).TotalMinutes);
+            int stepMinutes = totalSpanMinutes <= 180 ? 15 : totalSpanMinutes <= 420 ? 30 : 45;
+
+            // Collect regular time ticks + exact Now and SoberAt without duplicate minute labels
+            var sampleTimes = new List<DateTimeOffset> { startWindow };
+
+            var cursor = startWindow.AddMinutes(stepMinutes);
+            while (cursor < endWindow)
+            {
+                sampleTimes.Add(cursor);
+                cursor = cursor.AddMinutes(stepMinutes);
+            }
+
+            sampleTimes.Add(now);
+            foreach (var ev in orderedEvents)
+            {
+                sampleTimes.Add(ev.ConsumedAt);
+            }
+            if (estimatedSoberAt.HasValue)
+            {
+                sampleTimes.Add(estimatedSoberAt.Value);
+            }
+
+            // Deduplicate by minute so X-Axis never shows the same HH:mm twice
+            var distinctMinutePoints = sampleTimes
+                .OrderBy(t => t)
+                .GroupBy(t => new DateTimeOffset(t.Year, t.Month, t.Day, t.Hour, t.Minute, 0, t.Offset))
+                .Select(g => g.Last())
+                .ToList();
+
+            foreach (var pt in distinctMinutePoints)
+            {
+                decimal bacDl = EvaluateBacAt(pt);
+                timeline.Add(new BacTimelinePoint(pt, bacDl, Math.Round(bacDl * 10m, 3)));
+            }
         }
 
         var (safetyLevel, safetyMessage) = EvaluateSafety(currentBac);

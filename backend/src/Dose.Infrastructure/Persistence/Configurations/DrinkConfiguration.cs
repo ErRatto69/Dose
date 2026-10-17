@@ -14,10 +14,13 @@ public class DrinkConfiguration : IEntityTypeConfiguration<Drink>
         builder.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
 
         builder.Property(x => x.Name).HasMaxLength(120).IsRequired();
-        builder.HasIndex(x => x.Name).IsUnique();
 
-        // GIN Trigram index for fast instant search
+        // 1. Indice B-Tree standard per garantire l'unicità del nome
         builder.HasIndex(x => x.Name)
+            .IsUnique();
+
+        // 2. Indice GIN separato per autocomplete e instant search
+        builder.HasIndex(x => x.Name, "IX_drinks_name_trgm")
             .HasMethod("gin")
             .HasOperators("gin_trgm_ops");
 

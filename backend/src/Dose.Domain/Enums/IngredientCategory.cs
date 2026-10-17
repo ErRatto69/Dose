@@ -3,7 +3,11 @@
 public enum IngredientCategory
 {
     Spirit,
+    Liqueur,
+    Wine,
+    Beer,
     Mixer,
+    Syrup,
     Garnish,
     Pantry
 }

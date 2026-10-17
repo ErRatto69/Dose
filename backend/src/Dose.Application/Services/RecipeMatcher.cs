@@ -7,14 +7,16 @@ public class RecipeMatcher : IRecipeMatcher
 {
     public IReadOnlyList<DrinkMatchResultDto> MatchDrinks(
         IEnumerable<Drink> drinks,
-        ISet<Guid> availableIngredientIds,
+        IReadOnlyCollection<Ingredient> availableIngredients,
         int maxMissingAllowed = 2)
     {
         var results = new List<DrinkMatchResultDto>();
 
+        if (availableIngredients.Count == 0)
+            return results;
+
         foreach (var drink in drinks)
         {
-            // Essential ingredients: excluding garnishes and optional additions
             var essentialRecipeItems = drink.DrinkIngredients
                 .Where(di => di.Ingredient.Category != IngredientCategory.Garnish && !di.IsOptional)
                 .ToList();
@@ -22,23 +24,27 @@ public class RecipeMatcher : IRecipeMatcher
             if (essentialRecipeItems.Count == 0) continue;
 
             var missingEssential = essentialRecipeItems
-                .Where(di => !availableIngredientIds.Contains(di.IngredientId))
+                .Where(di => !availableIngredients.Any(userIng => userIng.MatchesRequirement(di.Ingredient)))
                 .Select(di => new MissingIngredientDto(
                     di.IngredientId,
-                    di.Ingredient.Name,
-                    di.Ingredient.Category.ToString()))
+                    FormatRequirementName(di.Ingredient),
+                    di.Ingredient.Category.ToString(),
+                    string.IsNullOrWhiteSpace(di.Ingredient.SubCategory) ? di.Ingredient.Name : di.Ingredient.SubCategory,
+                    di.Ingredient.Flavor))
                 .ToList();
 
-            if (missingEssential.Count > maxMissingAllowed)
+            int matchedCount = essentialRecipeItems.Count - missingEssential.Count;
+
+            // Never suggest a drink if the user has 0 matching ingredients for it!
+            if (matchedCount <= 0 || missingEssential.Count > maxMissingAllowed)
                 continue;
 
             var missingGarnishes = drink.DrinkIngredients
                 .Where(di => (di.Ingredient.Category == IngredientCategory.Garnish || di.IsOptional)
-                             && !availableIngredientIds.Contains(di.IngredientId))
+                             && !availableIngredients.Any(userIng => userIng.MatchesRequirement(di.Ingredient)))
                 .Select(di => di.Ingredient.Name)
                 .ToList();
 
-            int matchedCount = essentialRecipeItems.Count - missingEssential.Count;
             int matchPercentage = (int)Math.Round((double)matchedCount / essentialRecipeItems.Count * 100.0);
 
             string matchType = missingEssential.Count switch
@@ -51,8 +57,8 @@ public class RecipeMatcher : IRecipeMatcher
             string badgeText = missingEssential.Count switch
             {
                 0 => "Ready to mix (100%)",
-                1 => $"Missing only: {missingEssential[0].Name}",
-                _ => $"Missing 2 items: {string.Join(", ", missingEssential.Select(m => m.Name))}"
+                1 => $"Missing 1: {missingEssential[0].Name}",
+                _ => $"Missing {missingEssential.Count}: {string.Join(", ", missingEssential.Select(m => m.Name))}"
             };
 
             results.Add(new DrinkMatchResultDto(
@@ -74,5 +80,23 @@ public class RecipeMatcher : IRecipeMatcher
             .ThenByDescending(r => r.MatchPercentage)
             .ThenBy(r => r.Name)
             .ToList();
+    }
+
+    private static string FormatRequirementName(Ingredient ing)
+    {
+        string baseType = !string.IsNullOrWhiteSpace(ing.SubCategory) &&
+                          !ing.SubCategory.Equals("Generic", StringComparison.OrdinalIgnoreCase) &&
+                          !ing.SubCategory.Equals("Spirit", StringComparison.OrdinalIgnoreCase) &&
+                          !ing.SubCategory.Equals("Mixer", StringComparison.OrdinalIgnoreCase)
+            ? ing.SubCategory
+            : ing.Name;
+
+        if (!string.IsNullOrWhiteSpace(ing.Flavor) &&
+            !baseType.Contains(ing.Flavor, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{baseType} ({ing.Flavor})";
+        }
+
+        return baseType;
     }
 }

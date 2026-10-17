@@ -4,6 +4,8 @@ public record DrinkIngredientDetailDto(
     Guid IngredientId,
     string Name,
     string Category,
+    string SubCategory,
+    string? Flavor,
     decimal Abv,
     decimal AmountCl,
     decimal AmountOz,
