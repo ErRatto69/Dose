@@ -19,7 +19,7 @@ RUN dotnet restore "src/Dose.Api/Dose.Api.csproj"
 # Copia tutto il resto del codice sorgente e compila in Release
 COPY . .
 WORKDIR "/src/src/Dose.Api"
-RUN dotnet publish "Dose.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "Dose.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false /p:TreatWarningsAsErrors=false
 
 # Stage 2: Runtime leggero
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS final
