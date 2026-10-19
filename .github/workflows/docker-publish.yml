@@ -5,7 +5,8 @@ on:
     branches:
       - main
       - master
-  workflow_dispatch: # Permette di avviare la build anche manualmente da GitHub
+      - v2 # Monitora anche il branch v2
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -15,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # Necessario per pubblicare le immagini su ghcr.io
+      packages: write
 
     steps:
       - name: Checkout repository
@@ -35,6 +36,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # --- METADATI BACKEND ---
+      - name: Extract Docker metadata (Backend)
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/dose-backend
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+
       # 1. Build & Push Backend (.NET 10)
       - name: Build and push Backend image
         uses: docker/build-push-action@v6
@@ -42,11 +54,21 @@ jobs:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/dose-backend:latest
-            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/dose-backend:${{ github.sha }}
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # --- METADATI FRONTEND ---
+      - name: Extract Docker metadata (Frontend)
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/dose-frontend
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
 
       # 2. Build & Push Frontend (React + NGINX)
       - name: Build and push Frontend image
@@ -55,8 +77,7 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/dose-frontend:latest
-            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/dose-frontend:${{ github.sha }}
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
