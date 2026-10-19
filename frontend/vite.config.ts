@@ -54,7 +54,7 @@ export default defineConfig({
     port: 5155,
     proxy: {
       '/api': {
-        target: 'https://dose-api.home-ratti.duckdns.org',
+        target: 'https://dose-api-dev.home-ratti.duckdns.org',
         changeOrigin: true,
         secure: false
       }
