@@ -4,6 +4,9 @@ import type {
     UpdateBiometricsRequest,
     CreateUserAdminRequest,
     UpdateUserAdminRequest,
+    PagedResult,
+    RegistrationRequestItem,
+    ReviewItem,
 } from '@/types';
 
 export const usersApi = {
@@ -17,8 +20,58 @@ export const usersApi = {
         return data;
     },
 
-    getAllUsers: async (): Promise<UserProfile[]> => {
-        const { data } = await axiosClient.get<UserProfile[]>('/users');
+    getMyReviews: async (
+        pageNumber: number = 1,
+        pageSize: number = 8
+    ): Promise<PagedResult<ReviewItem>> => {
+        const { data } = await axiosClient.get<PagedResult<ReviewItem>>('/users/me/reviews', {
+            params: { pageNumber, pageSize },
+        });
+        return data;
+    },
+
+    getAllUsers: async (params?: {
+        pageNumber?: number;
+        pageSize?: number;
+        search?: string;
+    }): Promise<PagedResult<UserProfile>> => {
+        const { data } = await axiosClient.get<PagedResult<UserProfile>>('/users', {
+            params,
+        });
+        return data;
+    },
+
+    getRegistrationRequests: async (params?: {
+        pageNumber?: number;
+        pageSize?: number;
+    }): Promise<PagedResult<RegistrationRequestItem>> => {
+        const { data } = await axiosClient.get<PagedResult<RegistrationRequestItem>>(
+            '/users/registration-requests',
+            { params }
+        );
+        return data;
+    },
+
+    approveRegistrationRequest: async (id: string): Promise<UserProfile> => {
+        const { data } = await axiosClient.post<UserProfile>(
+            `/users/registration-requests/${id}/approve`
+        );
+        return data;
+    },
+
+    rejectRegistrationRequest: async (id: string): Promise<void> => {
+        await axiosClient.delete(`/users/registration-requests/${id}`);
+    },
+
+    getAdminReviews: async (params?: {
+        userId?: string;
+        search?: string;
+        pageNumber?: number;
+        pageSize?: number;
+    }): Promise<PagedResult<ReviewItem>> => {
+        const { data } = await axiosClient.get<PagedResult<ReviewItem>>('/admin/reviews', {
+            params,
+        });
         return data;
     },
 

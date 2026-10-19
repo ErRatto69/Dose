@@ -11,6 +11,7 @@ import { LeaderboardPage } from '@/pages/LeaderboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { AdminSafetyMonitorPage } from '@/pages/admin/AdminSafetyMonitorPage';
 import { AdminUsersPage } from '@/pages/admin/AdminUsersPage';
+import { AdminReviewsPage } from '@/pages/admin/AdminReviewsPage';
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -34,7 +35,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
     }
 
     const isAdmin = user?.role === 'Admin' || String(user?.role) === '0';
-
     if (requireAdmin && !isAdmin) {
         return <Navigate to="/drinks" replace />;
     }
@@ -45,7 +45,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
 export default function App() {
     return (
         <QueryClientProvider client={queryClient}>
-            <BrowserRouter>
+            <BrowserRouter basename={import.meta.env.BASE_URL}>
                 <Routes>
                     {/* Public Authentication Route */}
                     <Route path="/login" element={<LoginPage />} />
@@ -65,12 +65,20 @@ export default function App() {
                         <Route path="/leaderboard" element={<LeaderboardPage />} />
                         <Route path="/profile" element={<ProfilePage />} />
 
-                        {/* Admin-only Routes */}
+                        {/* Admin Routes */}
                         <Route
                             path="/admin/users"
                             element={
                                 <ProtectedRoute requireAdmin>
                                     <AdminUsersPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/admin/reviews"
+                            element={
+                                <ProtectedRoute requireAdmin>
+                                    <AdminReviewsPage />
                                 </ProtectedRoute>
                             }
                         />
@@ -84,7 +92,7 @@ export default function App() {
                         />
                     </Route>
 
-                    {/* Fallback Catch-All */}
+                    {/* Fallback */}
                     <Route path="*" element={<Navigate to="/drinks" replace />} />
                 </Routes>
             </BrowserRouter>

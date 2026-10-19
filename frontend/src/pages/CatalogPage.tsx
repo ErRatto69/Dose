@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { drinksApi } from '@/api/drinks.api';
 import { useDoseModalStore } from '@/store/useDoseModalStore';
@@ -10,12 +10,16 @@ import { DrinkDetailModal } from '@/components/drink/DrinkDetailModal';
 import { QuickCustomDrinkModal } from '@/components/drink/QuickCustomDrinkModal';
 import { CreateDrinkModal } from '@/components/drink/CreateDrinkModal';
 import { CreateIngredientModal } from '@/components/drink/CreateIngredientModal';
+import { PaginationControls } from '@/components/common/PaginationControls';
 import type { DrinkDetail } from '@/types';
 import { Plus, Star, Sparkles, Eye, Zap, Wine, Loader2 } from 'lucide-react';
-import { matchesSearchQuery } from '@/utils/textSearch';
 
 export const CatalogPage: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [pageNumber, setPageNumber] = useState(1);
+    const pageSize = 12;
+
     const [loadingAction, setLoadingAction] = useState<{ id: string; mode: 'view' | 'drink' } | null>(
         null
     );
@@ -33,16 +37,26 @@ export const CatalogPage: React.FC = () => {
         String(user?.role) === '0' ||
         String(user?.role) === '1';
 
-    const { data: drinks = [], isLoading, refetch } = useQuery({
-        queryKey: ['drinks-catalog'],
-        queryFn: drinksApi.getCatalog,
+    // Debounce search query to prevent excessive server requests
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchQuery);
+            setPageNumber(1);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
+    const { data: pagedDrinks, isLoading, refetch } = useQuery({
+        queryKey: ['drinks-catalog', pageNumber, debouncedSearch],
+        queryFn: () =>
+            drinksApi.getCatalog({
+                pageNumber,
+                pageSize,
+                search: debouncedSearch.trim() || undefined,
+            }),
     });
 
-    const filteredDrinks = useMemo(() => {
-        return drinks.filter((d) =>
-            matchesSearchQuery(searchQuery, d.name, d.description, d.glassType)
-        );
-    }, [drinks, searchQuery]);
+    const drinks = pagedDrinks?.items ?? [];
 
     const handleAction = async (drinkId: string, mode: 'view' | 'drink') => {
         try {
@@ -62,16 +76,13 @@ export const CatalogPage: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Page Header, Search & Action Buttons */}
-            <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 space-y-4">
+            {/* Header & Quick Action Bar */}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xl">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
-                            Mixology Index
-                        </span>
-                        <h1 className="text-2xl font-black text-white">Cocktail Catalog</h1>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                            Explore craft recipes, or log a quick shot, beer, or custom mix on the fly.
+                        <h1 className="text-2xl sm:text-3xl font-black text-white">Cocktail Catalog</h1>
+                        <p className="text-xs text-neutral-400 mt-1">
+                            Browse recipes, check alcohol strength, or record custom doses.
                         </p>
                     </div>
 
@@ -79,10 +90,10 @@ export const CatalogPage: React.FC = () => {
                         <button
                             type="button"
                             onClick={() => setIsQuickPourOpen(true)}
-                            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all"
+                            className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-red-600/25 transition-all active:scale-95"
                         >
-                            <Zap className="w-4 h-4" />
-                            Quick Shot / Custom Pour
+                            <Zap className="w-4 h-4 fill-white" />
+                            <span>Quick Pour</span>
                         </button>
 
                         {canManageCatalog && (
@@ -90,18 +101,18 @@ export const CatalogPage: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => setIsCreateDrinkOpen(true)}
-                                    className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
+                                    className="px-3.5 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
                                 >
-                                    <Plus className="w-4 h-4 text-amber-400" />
-                                    New Drink
+                                    <Plus className="w-4 h-4 text-red-500" />
+                                    <span>New Drink</span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setIsCreateIngredientOpen(true)}
-                                    className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
+                                    className="px-3.5 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
                                 >
-                                    <Wine className="w-4 h-4 text-amber-400" />
-                                    New Ingredient
+                                    <Wine className="w-4 h-4 text-red-500" />
+                                    <span>New Ingredient</span>
                                 </button>
                             </>
                         )}
@@ -111,123 +122,137 @@ export const CatalogPage: React.FC = () => {
                 <GlobalSearch value={searchQuery} onChange={setSearchQuery} />
             </div>
 
+            {/* Loading State */}
             {isLoading && (
-                <div className="py-20 flex flex-col items-center justify-center text-slate-500 gap-2">
-                    <Loader2 className="w-7 h-7 animate-spin text-amber-500" />
-                    <span className="text-xs">Loading craft catalog...</span>
+                <div className="py-24 flex flex-col items-center justify-center text-neutral-500 gap-2">
+                    <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+                    <span className="text-xs">Loading drinks...</span>
                 </div>
             )}
 
-            {/* Responsive Multi-Column Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDrinks.map((drink) => {
-                    const isViewing =
-                        loadingAction?.id === drink.id && loadingAction.mode === 'view';
-                    const isDrinking =
-                        loadingAction?.id === drink.id && loadingAction.mode === 'drink';
+            {/* Cocktail Grid */}
+            {!isLoading && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {drinks.map((drink) => {
+                        const isViewing =
+                            loadingAction?.id === drink.id && loadingAction.mode === 'view';
+                        const isDrinking =
+                            loadingAction?.id === drink.id && loadingAction.mode === 'drink';
 
-                    return (
-                        <div
-                            key={drink.id}
-                            onClick={() => handleAction(drink.id, 'view')}
-                            className="cursor-pointer p-5 rounded-2xl bg-slate-900/85 border border-slate-800/90 hover:border-amber-500/40 transition-all flex flex-col justify-between gap-4 shadow-md group"
-                        >
-                            <div className="space-y-3">
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <h3 className="text-lg font-bold text-white group-hover:text-amber-400 transition-colors leading-tight">
-                                                {drink.name}
-                                            </h3>
-                                            {drink.glassType && (
-                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300">
-                                                    {drink.glassType}
-                                                </span>
-                                            )}
+                        return (
+                            <div
+                                key={drink.id}
+                                onClick={() => handleAction(drink.id, 'view')}
+                                className="cursor-pointer p-5 rounded-3xl bg-neutral-900 border border-neutral-800 hover:border-red-600/50 transition-all flex flex-col justify-between gap-4 shadow-md group"
+                            >
+                                <div className="space-y-3">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <h3 className="text-lg font-bold text-white group-hover:text-red-400 transition-colors leading-tight truncate">
+                                                    {drink.name}
+                                                </h3>
+                                                {drink.glassType && (
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-neutral-950 border border-neutral-800 text-neutral-400">
+                                                        {drink.glassType}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-neutral-400 line-clamp-2 mt-1.5 leading-relaxed">
+                                                {drink.description}
+                                            </p>
                                         </div>
-                                        <p className="text-xs text-slate-400 line-clamp-2 mt-1.5 leading-relaxed">
-                                            {drink.description}
-                                        </p>
+
+                                        {drink.averageRating > 0 && (
+                                            <div className="flex items-center gap-1 text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded-lg shrink-0">
+                                                <Star className="w-3.5 h-3.5 fill-amber-400" />
+                                                <span>{drink.averageRating}</span>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {drink.averageRating > 0 && (
-                                        <div className="flex items-center gap-1 text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded-lg shrink-0">
-                                            <Star className="w-3.5 h-3.5 fill-amber-400" />
-                                            <span>{drink.averageRating}</span>
-                                        </div>
-                                    )}
+                                    <BottleStrengthMeter
+                                        score1To10={drink.bottleScore1To10}
+                                        abvPercent={drink.abvPercent}
+                                        compact
+                                    />
                                 </div>
 
-                                <BottleStrengthMeter
-                                    score1To10={drink.bottleScore1To10}
-                                    abvPercent={drink.abvPercent}
-                                    compact
-                                />
-                            </div>
-
-                            <div
-                                className="grid grid-cols-2 gap-2 pt-1"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => handleAction(drink.id, 'view')}
-                                    disabled={isViewing || isDrinking}
-                                    className="py-2.5 px-3 rounded-xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700/70 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                                <div
+                                    className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-800/80"
+                                    onClick={(e) => e.stopPropagation()}
                                 >
-                                    {isViewing ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Eye className="w-4 h-4" />
-                                    )}
-                                    View Recipe
-                                </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleAction(drink.id, 'view')}
+                                        disabled={isViewing || isDrinking}
+                                        className="py-2.5 px-3 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                                    >
+                                        {isViewing ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Eye className="w-4 h-4" />
+                                        )}
+                                        <span>View Recipe</span>
+                                    </button>
 
-                                <button
-                                    type="button"
-                                    onClick={() => handleAction(drink.id, 'drink')}
-                                    disabled={isViewing || isDrinking}
-                                    className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
-                                >
-                                    {isDrinking ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Plus className="w-4 h-4 stroke-[2.5]" />
-                                    )}
-                                    Drink Now
-                                </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleAction(drink.id, 'drink')}
+                                        disabled={isViewing || isDrinking}
+                                        className="py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-md shadow-red-600/20"
+                                    >
+                                        {isDrinking ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Plus className="w-4 h-4 stroke-[2.5]" />
+                                        )}
+                                        <span>Drink Now</span>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    );
-                })}
-            </div>
+                        );
+                    })}
+                </div>
+            )}
 
-            {!isLoading && filteredDrinks.length === 0 && (
-                <div className="py-16 text-center text-slate-500 bg-slate-900/40 border border-slate-800/60 rounded-2xl">
-                    <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-40" />
+            {/* Empty State */}
+            {!isLoading && drinks.length === 0 && (
+                <div className="py-20 text-center text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-3xl">
+                    <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-40 text-neutral-400" />
                     <p className="text-sm font-medium">No drinks found matching your query.</p>
                 </div>
             )}
 
+            {/* Pagination Controls */}
+            {pagedDrinks && (
+                <PaginationControls
+                    pageNumber={pagedDrinks.pageNumber}
+                    totalPages={pagedDrinks.totalPages}
+                    totalCount={pagedDrinks.totalCount}
+                    hasPreviousPage={pagedDrinks.hasPreviousPage}
+                    hasNextPage={pagedDrinks.hasNextPage}
+                    onPageChange={(page) => setPageNumber(page)}
+                    itemLabel="cocktails"
+                />
+            )}
+
+            {/* Modals */}
             <DrinkDetailModal
                 drink={viewedDrink}
                 isOpen={!!viewedDrink}
                 onClose={() => setViewedDrink(null)}
                 onDrinkNow={(detail) => openModal(detail)}
             />
-
             <DoseCustomizerModal onSuccessLogged={() => refetch()} />
-
             <QuickCustomDrinkModal
                 isOpen={isQuickPourOpen}
                 onClose={() => setIsQuickPourOpen(false)}
             />
-
             <CreateDrinkModal
                 isOpen={isCreateDrinkOpen}
                 onClose={() => setIsCreateDrinkOpen(false)}
             />
-
             <CreateIngredientModal
                 isOpen={isCreateIngredientOpen}
                 onClose={() => setIsCreateIngredientOpen(false)}

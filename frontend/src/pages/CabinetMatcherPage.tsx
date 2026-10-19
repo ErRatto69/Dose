@@ -18,7 +18,6 @@ import {
     Filter,
     Trash2,
 } from 'lucide-react';
-import { matchesSearchQuery } from '@/utils/textSearch';
 
 const CATEGORY_TABS: Array<{ label: string; value: 'ALL' | IngredientCategory }> = [
     { label: 'All', value: 'ALL' },
@@ -40,9 +39,15 @@ export const CabinetMatcherPage: React.FC = () => {
 
     const { openModal } = useDoseModalStore();
 
+    // Query ingredients using server-side filtering to avoid loading all items at once
     const { data: ingredients = [], isLoading: isLoadingIngredients } = useQuery({
-        queryKey: ['all-ingredients'],
-        queryFn: drinksApi.getAllIngredients,
+        queryKey: ['cabinet-ingredients', activeCategory, searchQuery],
+        queryFn: () =>
+            drinksApi.getAllIngredients({
+                category: activeCategory === 'ALL' ? undefined : activeCategory,
+                search: searchQuery.trim() || undefined,
+                limit: 100,
+            }),
     });
 
     const { data: savedCabinet } = useQuery({
@@ -60,27 +65,26 @@ export const CabinetMatcherPage: React.FC = () => {
     }, [savedCabinet]);
 
     const selectedIngredientsList = useMemo(() => {
-        return ingredients.filter((i) => selectedIngredientIds.has(i.id));
-    }, [ingredients, selectedIngredientIds]);
+        const idMap = new Map<string, string>();
+        savedCabinet?.ingredients.forEach((i) => idMap.set(i.id, i.name));
+        ingredients.forEach((i) => idMap.set(i.id, i.name));
 
-    const filteredIngredients = useMemo(() => {
-        return ingredients.filter((ing) => {
-            const matchesCat = activeCategory === 'ALL' || ing.category === activeCategory;
-            if (!matchesCat) return false;
-            return matchesSearchQuery(searchQuery, ing.name, ing.subCategory, ing.flavor);
-        });
-    }, [ingredients, searchQuery, activeCategory]);
+        return Array.from(selectedIngredientIds).map((id) => ({
+            id,
+            name: idMap.get(id) || 'Selected Bottle',
+        }));
+    }, [ingredients, savedCabinet, selectedIngredientIds]);
 
-    // Group filtered ingredients by SubCategory (e.g., Vodka, Gin, White Rum, Liqueur...)
+    // Group ingredients by sub-category
     const groupedBySubCategory = useMemo(() => {
-        const groups: Record<string, typeof filteredIngredients> = {};
-        for (const ing of filteredIngredients) {
+        const groups: Record<string, typeof ingredients> = {};
+        for (const ing of ingredients) {
             const key = ing.subCategory || ing.category;
             if (!groups[key]) groups[key] = [];
             groups[key].push(ing);
         }
         return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-    }, [filteredIngredients]);
+    }, [ingredients]);
 
     const toggleIngredient = (id: string) => {
         setSelectedIngredientIds((prev) => {
@@ -97,6 +101,7 @@ export const CabinetMatcherPage: React.FC = () => {
             const ids = Array.from(selectedIngredientIds);
             await drinksApi.syncCabinet(ids);
             const results = await drinksApi.matchCabinet(ids);
+            // Drinks with less than 50% match are already filtered out on backend
             setMatchResults(results);
         } catch (err) {
             console.error('Matching failed:', err);
@@ -118,14 +123,14 @@ export const CabinetMatcherPage: React.FC = () => {
     return (
         <div className="space-y-6">
             {/* Header Banner */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <Sparkles className="w-5 h-5 text-amber-400" />
-                        <h1 className="text-xl font-black text-white">Bar Cabinet &amp; Drink Matcher</h1>
-                    </div>
-                    <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
-                        Search and select the bottles, spirits, and mixers you have on hand. Our engine matches recipes by spirit type (e.g., any neutral Vodka) and specific flavor (e.g., Peach vs Coffee).
+                    <h1 className="text-2xl sm:text-3xl font-black text-white flex items-center gap-2">
+                        <Sparkles className="w-6 h-6 text-red-500" />
+                        <span>Bar Cabinet Matcher</span>
+                    </h1>
+                    <p className="text-xs text-neutral-400 mt-1 max-w-xl">
+                        Select the bottles and mixers you have on hand. Cocktails with at least 50% matching ingredients will be displayed.
                     </p>
                 </div>
 
@@ -133,31 +138,31 @@ export const CabinetMatcherPage: React.FC = () => {
                     type="button"
                     onClick={handleMatch}
                     disabled={isMatching || selectedIngredientIds.size === 0}
-                    className="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] shrink-0 shadow-lg shadow-amber-500/20"
+                    className="px-6 py-3 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shrink-0 shadow-lg shadow-red-600/25"
                 >
                     {isMatching ? (
                         <>
                             <Loader2 className="w-4 h-4 animate-spin" />
-                            Matching Recipes...
+                            <span>Matching...</span>
                         </>
                     ) : (
                         <>
                             <Sparkles className="w-4 h-4" />
-                            Find Drinks ({selectedIngredientIds.size} selected)
+                            <span>Find Drinks ({selectedIngredientIds.size})</span>
                         </>
                     )}
                 </button>
             </div>
 
-            {/* Desktop 2-Column Layout */}
+            {/* 2-Column Responsive Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Left Column: Search, Filter & Select Ingredients */}
+                {/* Left Column: Bottle Selection */}
                 <div className="lg:col-span-7 space-y-4">
-                    {/* Selected Bottles Bar */}
-                    <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800">
+                    {/* Selected Bottles Capsule Bar */}
+                    <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
                         <div className="flex items-center justify-between mb-2.5">
-                            <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                                My Selected Bottles &amp; Mixers ({selectedIngredientsList.length})
+                            <span className="text-xs font-bold text-neutral-300">
+                                Selected Ingredients ({selectedIngredientsList.length})
                             </span>
                             {selectedIngredientsList.length > 0 && (
                                 <button
@@ -166,27 +171,22 @@ export const CabinetMatcherPage: React.FC = () => {
                                         setSelectedIngredientIds(new Set());
                                         setMatchResults(null);
                                     }}
-                                    className="text-[11px] text-slate-400 hover:text-rose-400 flex items-center gap-1"
+                                    className="text-xs text-neutral-400 hover:text-red-400 flex items-center gap-1 transition-colors"
                                 >
-                                    <Trash2 className="w-3 h-3" />
-                                    Clear all
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Clear</span>
                                 </button>
                             )}
                         </div>
 
                         {selectedIngredientsList.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
                                 {selectedIngredientsList.map((ing) => (
                                     <span
                                         key={ing.id}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-amber-500/15 border border-amber-500/50 text-amber-300"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-red-600/15 border border-red-600/40 text-red-200"
                                     >
                                         <span>{ing.name}</span>
-                                        {ing.flavor && (
-                                            <span className="text-[10px] text-amber-200/80">
-                                                ({ing.flavor})
-                                            </span>
-                                        )}
                                         <button
                                             type="button"
                                             onClick={() => toggleIngredient(ing.id)}
@@ -198,29 +198,28 @@ export const CabinetMatcherPage: React.FC = () => {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-xs text-slate-500">
-                                No bottles selected yet. Use the search bar below to add what you have.
+                            <p className="text-xs text-neutral-500">
+                                No bottles selected yet. Pick ingredients from below.
                             </p>
                         )}
                     </div>
 
                     {/* Search & Category Filter Box */}
-                    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-                        {/* Search Input */}
+                    <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-4">
                         <div className="relative">
-                            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                            <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search by name, spirit type (Vodka, Gin, Rum...) or flavor (Peach, Coffee)..."
-                                className="w-full pl-10 pr-9 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500/60"
+                                placeholder="Filter ingredients (e.g., Gin, Bourbon, Vermouth)..."
+                                className="w-full pl-10 pr-9 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600"
                             />
                             {searchQuery && (
                                 <button
                                     type="button"
                                     onClick={() => setSearchQuery('')}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-200"
                                 >
                                     <X className="w-4 h-4" />
                                 </button>
@@ -229,7 +228,7 @@ export const CabinetMatcherPage: React.FC = () => {
 
                         {/* Category Pills */}
                         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                            <Filter className="w-3.5 h-3.5 text-slate-500 shrink-0 mr-1" />
+                            <Filter className="w-3.5 h-3.5 text-neutral-500 shrink-0 mr-1" />
                             {CATEGORY_TABS.map((tab) => (
                                 <button
                                     key={tab.value}
@@ -237,8 +236,8 @@ export const CabinetMatcherPage: React.FC = () => {
                                     onClick={() => setActiveCategory(tab.value)}
                                     className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
                                         activeCategory === tab.value
-                                            ? 'bg-amber-500 text-slate-950'
-                                            : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                            ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
+                                            : 'bg-neutral-950 text-neutral-400 hover:text-neutral-200 border border-neutral-800'
                                     }`}
                                 >
                                     {tab.label}
@@ -246,28 +245,29 @@ export const CabinetMatcherPage: React.FC = () => {
                             ))}
                         </div>
 
-                        {/* Grouped Ingredients List */}
+                        {/* Ingredients Grouped List */}
                         {isLoadingIngredients ? (
-                            <div className="py-12 flex justify-center text-slate-500 text-xs gap-2">
-                                <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                                Loading bar inventory...
+                            <div className="py-12 flex justify-center text-neutral-500 text-xs gap-2">
+                                <Loader2 className="w-4 h-4 animate-spin text-red-600" />
+                                <span>Loading ingredients...</span>
                             </div>
                         ) : (
-                            <div className="space-y-4 max-h-[520px] overflow-y-auto pr-1">
+                            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
                                 {groupedBySubCategory.map(([subCategory, items]) => (
                                     <div key={subCategory} className="space-y-2">
-                                        <div className="flex items-center justify-between border-b border-slate-800/80 pb-1">
-                                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                                        <div className="flex items-center justify-between border-b border-neutral-800 pb-1">
+                                            <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-300">
                                                 {subCategory}
                                             </h4>
-                                            <span className="text-[10px] text-slate-500">
-                                                {items.length} option(s)
+                                            <span className="text-[10px] text-neutral-500">
+                                                {items.length} item(s)
                                             </span>
                                         </div>
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                             {items.map((ing) => {
                                                 const isSelected = selectedIngredientIds.has(ing.id);
+
                                                 return (
                                                     <button
                                                         key={ing.id}
@@ -275,25 +275,23 @@ export const CabinetMatcherPage: React.FC = () => {
                                                         onClick={() => toggleIngredient(ing.id)}
                                                         className={`p-3 rounded-xl text-left border flex items-center justify-between gap-2 transition-all active:scale-[0.99] ${
                                                             isSelected
-                                                                ? 'bg-amber-500/15 border-amber-500 text-white shadow-sm'
-                                                                : 'bg-slate-950/70 border-slate-800/90 text-slate-300 hover:border-slate-700'
+                                                                ? 'bg-red-600/15 border-red-600 text-white shadow-sm'
+                                                                : 'bg-neutral-950 border-neutral-800 text-neutral-300 hover:border-neutral-700'
                                                         }`}
                                                     >
                                                         <div className="min-w-0">
                                                             <div className="text-xs font-bold truncate">
                                                                 {ing.name}
                                                             </div>
-                                                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400">
-                                                                {ing.flavor ? (
-                                                                    <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-semibold">
+                                                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-neutral-400">
+                                                                {ing.flavor && (
+                                                                    <span className="px-1.5 py-0.2 rounded bg-red-950 text-red-300 font-semibold">
                                                                         {ing.flavor}
                                                                     </span>
-                                                                ) : (
-                                                                    <span>Classic / Neutral</span>
                                                                 )}
                                                                 {ing.abv > 0 && (
-                                                                    <span className="text-amber-400 font-mono">
-                                                                        • {ing.abv}%
+                                                                    <span className="text-red-400 font-mono">
+                                                                        {ing.abv}%
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -302,8 +300,8 @@ export const CabinetMatcherPage: React.FC = () => {
                                                         <div
                                                             className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 border ${
                                                                 isSelected
-                                                                    ? 'bg-amber-500 border-amber-500 text-slate-950'
-                                                                    : 'border-slate-700 bg-slate-900'
+                                                                    ? 'bg-red-600 border-red-600 text-white'
+                                                                    : 'border-neutral-700 bg-neutral-900'
                                                             }`}
                                                         >
                                                             {isSelected && (
@@ -318,8 +316,8 @@ export const CabinetMatcherPage: React.FC = () => {
                                 ))}
 
                                 {groupedBySubCategory.length === 0 && (
-                                    <p className="text-xs text-center text-slate-500 py-8">
-                                        No ingredients match your search filter.
+                                    <p className="text-xs text-center text-neutral-500 py-8">
+                                        No ingredients match your filter.
                                     </p>
                                 )}
                             </div>
@@ -327,35 +325,34 @@ export const CabinetMatcherPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Right Column: Matching Cocktails */}
+                {/* Right Column: Matching Cocktails (>= 50%) */}
                 <div className="lg:col-span-5 space-y-3">
-                    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+                    <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
                         <h3 className="text-sm font-bold text-white mb-3">
-                            Matching Cocktails {matchResults ? `(${matchResults.length})` : ''}
+                            Available Cocktails {matchResults ? `(${matchResults.length})` : ''}
                         </h3>
 
                         {!matchResults ? (
-                            <div className="py-12 text-center text-slate-500 text-xs space-y-2">
-                                <Sparkles className="w-7 h-7 mx-auto text-slate-600" />
-                                <p>
-                                    Select your bottles on the left and click <strong>Find Drinks</strong> to see what you can mix.
-                                </p>
+                            <div className="py-16 text-center text-neutral-500 text-xs space-y-2">
+                                <Sparkles className="w-7 h-7 mx-auto text-neutral-600" />
+                                <p>Select your bottles and click &quot;Find Drinks&quot;.</p>
                             </div>
                         ) : matchResults.length === 0 ? (
-                            <div className="py-12 text-center text-slate-500 text-xs">
-                                No matching cocktails found with max 2 missing ingredients. Try selecting a few more spirits or mixers!
+                            <div className="py-16 text-center text-neutral-500 text-xs">
+                                No cocktails found with at least 50% match. Try adding a few more spirits or mixers!
                             </div>
                         ) : (
-                            <div className="space-y-3 max-h-[640px] overflow-y-auto pr-1">
+                            <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
                                 {matchResults.map((result) => {
                                     const isExact = result.matchType === 'EXACT';
+
                                     return (
                                         <div
                                             key={result.drinkId}
                                             className={`p-4 rounded-2xl border flex flex-col gap-3 transition-all ${
                                                 isExact
-                                                    ? 'bg-emerald-950/20 border-emerald-700/60'
-                                                    : 'bg-slate-950/80 border-slate-800'
+                                                    ? 'bg-emerald-950/25 border-emerald-700/60'
+                                                    : 'bg-neutral-950 border-neutral-800'
                                             }`}
                                         >
                                             <div className="flex items-start justify-between gap-2">
@@ -367,7 +364,7 @@ export const CabinetMatcherPage: React.FC = () => {
                                                         className={`inline-flex items-center gap-1 mt-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
                                                             isExact
                                                                 ? 'bg-emerald-500/20 text-emerald-400'
-                                                                : 'bg-amber-500/20 text-amber-400'
+                                                                : 'bg-red-500/20 text-red-400'
                                                         }`}
                                                     >
                                                         {isExact ? (
@@ -378,7 +375,8 @@ export const CabinetMatcherPage: React.FC = () => {
                                                         {result.matchSummaryBadge}
                                                     </span>
                                                 </div>
-                                                <span className="text-xs font-mono font-bold text-slate-400">
+
+                                                <span className="text-xs font-mono font-bold text-neutral-400">
                                                     {result.matchPercentage}% match
                                                 </span>
                                             </div>
@@ -389,22 +387,23 @@ export const CabinetMatcherPage: React.FC = () => {
                                                 compact
                                             />
 
-                                            <div className="grid grid-cols-2 gap-2">
+                                            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-800/80">
                                                 <button
                                                     type="button"
                                                     onClick={() => handleOpenDrink(result.drinkId, 'view')}
-                                                    className="py-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                                                    className="py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
                                                 >
                                                     <Eye className="w-3.5 h-3.5" />
-                                                    View Recipe
+                                                    <span>View Recipe</span>
                                                 </button>
+
                                                 <button
                                                     type="button"
                                                     onClick={() => handleOpenDrink(result.drinkId, 'drink')}
-                                                    className="py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                                                    className="py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-md shadow-red-600/20"
                                                 >
                                                     <Plus className="w-4 h-4 stroke-[2.5]" />
-                                                    Drink / Customize
+                                                    <span>Drink Now</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -416,13 +415,13 @@ export const CabinetMatcherPage: React.FC = () => {
                 </div>
             </div>
 
+            {/* Modals */}
             <DrinkDetailModal
                 drink={viewedDrink}
                 isOpen={!!viewedDrink}
                 onClose={() => setViewedDrink(null)}
                 onDrinkNow={(detail) => openModal(detail)}
             />
-
             <DoseCustomizerModal onSuccessLogged={handleMatch} />
         </div>
     );

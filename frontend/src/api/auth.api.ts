@@ -1,5 +1,5 @@
 import { axiosClient } from './axiosClient';
-import type { AuthResponse } from '@/types';
+import type { AuthResponse, CreateRegistrationRequestPayload } from '@/types';
 
 export const authApi = {
     login: async (identifier: string, password: string): Promise<AuthResponse> => {
@@ -7,6 +7,16 @@ export const authApi = {
             identifier,
             password,
         });
+        return data;
+    },
+
+    submitRegistrationRequest: async (
+        payload: CreateRegistrationRequestPayload
+    ): Promise<{ message: string }> => {
+        const { data } = await axiosClient.post<{ message: string }>(
+            '/auth/register-request',
+            payload
+        );
         return data;
     },
 };

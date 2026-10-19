@@ -4,8 +4,9 @@ import type {
     DrinkLogResponse,
     LogDrinkRequest,
     LogCustomDrinkRequest,
+    UpdateDrinkLogRequest,
     MonthlyLeaderboardResponse,
-    AdminUserBacOverview,
+    AdminBacOverviewPagedResponse,
 } from '@/types';
 
 export const bacApi = {
@@ -15,13 +16,31 @@ export const bacApi = {
     },
 
     logDrink: async (drinkId: string, payload: LogDrinkRequest): Promise<DrinkLogResponse> => {
-        const { data } = await axiosClient.post<DrinkLogResponse>(`/drinks/${drinkId}/log`, payload);
+        const { data } = await axiosClient.post<DrinkLogResponse>(
+            `/drinks/${drinkId}/log`,
+            payload
+        );
         return data;
     },
 
     logCustomDrink: async (payload: LogCustomDrinkRequest): Promise<DrinkLogResponse> => {
         const { data } = await axiosClient.post<DrinkLogResponse>('/drinks/custom/log', payload);
         return data;
+    },
+
+    updateDrinkLog: async (
+        logId: string,
+        payload: UpdateDrinkLogRequest
+    ): Promise<DrinkLogResponse> => {
+        const { data } = await axiosClient.put<DrinkLogResponse>(
+            `/drinks/logs/${logId}`,
+            payload
+        );
+        return data;
+    },
+
+    deleteDrinkLog: async (logId: string): Promise<void> => {
+        await axiosClient.delete(`/drinks/logs/${logId}`);
     },
 
     getLeaderboard: async (period?: string): Promise<MonthlyLeaderboardResponse> => {
@@ -31,8 +50,15 @@ export const bacApi = {
         return data;
     },
 
-    getAdminBacOverview: async (): Promise<AdminUserBacOverview[]> => {
-        const { data } = await axiosClient.get<AdminUserBacOverview[]>('/admin/users/bac-overview');
+    getAdminBacOverview: async (params?: {
+        pageNumber?: number;
+        pageSize?: number;
+        search?: string;
+    }): Promise<AdminBacOverviewPagedResponse> => {
+        const { data } = await axiosClient.get<AdminBacOverviewPagedResponse>(
+            '/admin/users/bac-overview',
+            { params }
+        );
         return data;
     },
 };

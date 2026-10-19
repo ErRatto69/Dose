@@ -18,6 +18,7 @@ import {
     Trash2,
     Search,
     RefreshCw,
+    AlertTriangle,
 } from 'lucide-react';
 import { matchesSearchQuery } from '@/utils/textSearch';
 
@@ -54,7 +55,7 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
 
     const { data: allIngredients = [] } = useQuery({
         queryKey: ['all-ingredients'],
-        queryFn: drinksApi.getAllIngredients,
+        queryFn: () => drinksApi.getAllIngredients(),
         enabled: isOpen,
     });
 
@@ -79,12 +80,13 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
 
     const deltaBacEstimate = useMemo(() => {
         if (!user) return 0;
+        const normalizedSex = user.sex === 'Female' || String(user.sex) === '1' ? 'Female' : 'Male';
         return estimateDeltaBac(
             metrics.pureAlcoholGrams,
             user.weightKg,
             user.heightCm,
-            user.sex,
-            user.birthYear
+            normalizedSex,
+            user.birthYear ?? undefined
         );
     }, [metrics.pureAlcoholGrams, user]);
 
@@ -93,7 +95,7 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
     const getMatchingAlternatives = (subCategory: string, flavor?: string | null) => {
         return allIngredients.filter(
             (ing) =>
-                ing.subCategory.toLowerCase() === subCategory.toLowerCase() &&
+                (ing.subCategory || '').toLowerCase() === (subCategory || '').toLowerCase() &&
                 (ing.flavor ?? '').toLowerCase() === (flavor ?? '').toLowerCase()
         );
     };
@@ -128,24 +130,24 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-neutral-950/80 backdrop-blur-md">
             <div
-                className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-6 duration-200"
+                className="w-full max-w-xl bg-neutral-900 border border-neutral-800 rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-6 duration-200"
                 role="dialog"
                 aria-modal="true"
             >
                 {/* Header */}
-                <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+                <div className="p-4 sm:p-5 border-b border-neutral-800 flex items-center justify-between bg-neutral-900">
                     <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-500">
-                            Customize &amp; Log Drink
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-500">
+                            Customize &amp; Log Dose
                         </span>
-                        <h2 className="text-xl font-bold text-white leading-tight">{drink.name}</h2>
+                        <h2 className="text-xl font-black text-white leading-tight">{drink.name}</h2>
                     </div>
                     <button
                         type="button"
                         onClick={closeModal}
-                        className="p-2 text-slate-400 hover:text-white rounded-full bg-slate-800/60 transition-colors"
+                        className="p-2 text-neutral-400 hover:text-white rounded-full bg-neutral-800 transition-colors"
                         aria-label="Close modal"
                     >
                         <X className="w-5 h-5" />
@@ -153,29 +155,29 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                 </div>
 
                 {/* Real-time Telemetry Bar */}
-                <div className="px-4 py-3 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between text-xs">
+                <div className="px-5 py-3 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between text-xs">
                     <div>
-                        <span className="text-slate-400 block">Total Volume</span>
-                        <strong className="text-slate-200 text-sm">
+                        <span className="text-neutral-400 block">Total Volume</span>
+                        <strong className="text-neutral-200 text-sm font-mono">
                             {formatVolume(metrics.totalVolumeCl, preferredUnit)}
                         </strong>
                     </div>
                     <div className="text-center">
-                        <span className="text-slate-400 block">Pure Alcohol</span>
-                        <strong className="text-amber-400 text-sm">
+                        <span className="text-neutral-400 block">Pure Alcohol</span>
+                        <strong className="text-white text-sm font-mono">
                             {metrics.pureAlcoholGrams.toFixed(1)}g
                         </strong>
                     </div>
                     <div className="text-right">
-                        <span className="text-slate-400 block">Estimated Δ BAC</span>
-                        <strong className="text-rose-400 text-sm">
+                        <span className="text-neutral-400 block">Estimated +BAC</span>
+                        <strong className="text-red-400 text-sm font-mono">
                             +{deltaBacEstimate.toFixed(2)} g/L
                         </strong>
                     </div>
                 </div>
 
                 {/* Scrollable Body */}
-                <div className="p-4 overflow-y-auto space-y-5 flex-1">
+                <div className="p-5 overflow-y-auto space-y-5 flex-1">
                     <BottleStrengthMeter
                         score1To10={metrics.bottleScore1To10}
                         bottleRating={metrics.bottleVisualRating}
@@ -185,7 +187,7 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
 
                     {/* Quick Multiplier Presets */}
                     <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-2">
+                        <label className="text-xs font-semibold text-neutral-300 block mb-2">
                             Quick Multipliers (Alcoholic Components)
                         </label>
                         <div className="grid grid-cols-4 gap-2">
@@ -199,42 +201,42 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                                     key={item.mult}
                                     type="button"
                                     onClick={() => applyMultiplier(item.mult)}
-                                    className="py-1.5 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 text-xs font-medium text-slate-200 flex flex-col items-center active:scale-95 transition-transform"
+                                    className="py-2 px-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-xs font-medium text-neutral-200 flex flex-col items-center active:scale-95 transition-all"
                                 >
-                                    <span className="font-bold text-amber-400">{item.label}</span>
-                                    <span className="text-[10px] text-slate-400">{item.text}</span>
+                                    <span className="font-bold text-red-500">{item.label}</span>
+                                    <span className="text-[10px] text-neutral-400">{item.text}</span>
                                 </button>
                             ))}
                         </div>
                     </div>
 
-                    {/* Ingredients Steppers + Brand Switcher + Add Extra */}
+                    {/* Ingredients Steppers */}
                     <div>
                         <div className="flex items-center justify-between mb-2">
-                            <label className="text-xs font-semibold text-slate-400">
-                                Ingredients &amp; Custom Doses
+                            <label className="text-xs font-semibold text-neutral-300">
+                                Recipe Components
                             </label>
                             <button
                                 type="button"
                                 onClick={() => setShowAddIngredient((v) => !v)}
-                                className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                                className="text-xs font-bold text-red-500 hover:text-red-400 flex items-center gap-1"
                             >
                                 <Plus className="w-3.5 h-3.5" />
-                                {showAddIngredient ? 'Close Search' : 'Add Spirit / Ingredient'}
+                                {showAddIngredient ? 'Close Search' : 'Add Ingredient'}
                             </button>
                         </div>
 
-                        {/* Add Extra Spirit or Ingredient Drawer */}
+                        {/* Add Extra Ingredient Drawer */}
                         {showAddIngredient && (
-                            <div className="mb-3 p-3 rounded-xl bg-slate-950 border border-amber-500/40 space-y-2.5">
+                            <div className="mb-3 p-3.5 rounded-2xl bg-neutral-950 border border-red-600/40 space-y-2.5">
                                 <div className="relative">
-                                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
                                     <input
                                         type="text"
                                         value={ingredientSearch}
                                         onChange={(e) => setIngredientSearch(e.target.value)}
                                         placeholder="Search spirit, liqueur, mixer, or flavor..."
-                                        className="w-full pl-8 pr-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                                        className="w-full pl-8 pr-3 py-2 bg-neutral-900 border border-neutral-800 rounded-xl text-xs text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600"
                                     />
                                 </div>
                                 <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
@@ -247,16 +249,18 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                                                 setShowAddIngredient(false);
                                                 setIngredientSearch('');
                                             }}
-                                            className="w-full px-2.5 py-1.5 rounded-lg hover:bg-slate-800 flex items-center justify-between text-left text-xs transition-colors"
+                                            className="w-full px-2.5 py-1.5 rounded-xl hover:bg-neutral-800 flex items-center justify-between text-left text-xs transition-colors"
                                         >
                                             <div>
-                                                <span className="font-semibold text-slate-200">{ing.name}</span>
-                                                <span className="text-[10px] text-slate-400 ml-1.5">
+                                                <span className="font-semibold text-neutral-200">
+                                                    {ing.name}
+                                                </span>
+                                                <span className="text-[10px] text-neutral-400 ml-1.5">
                                                     ({ing.subCategory}
                                                     {ing.flavor ? ` • ${ing.flavor}` : ''})
                                                 </span>
                                             </div>
-                                            <span className="text-[11px] font-mono text-amber-400 font-bold">
+                                            <span className="text-[11px] font-mono text-red-400 font-bold">
                                                 {ing.abv > 0 ? `${ing.abv}%` : 'Mixer'}
                                             </span>
                                         </button>
@@ -265,31 +269,31 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                             </div>
                         )}
 
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                             {components.map((comp) => {
                                 const alternatives = getMatchingAlternatives(comp.subCategory, comp.flavor);
 
                                 return (
                                     <div
                                         key={comp.rowId}
-                                        className="p-3 rounded-xl bg-slate-800/40 border border-slate-800 space-y-2"
+                                        className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2.5"
                                     >
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="text-sm font-semibold text-slate-200 truncate">
+                                                    <span className="text-sm font-semibold text-neutral-200 truncate">
                                                         {comp.name}
                                                     </span>
                                                     {comp.isCustomAdded && (
-                                                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                                                        <span className="px-1.5 py-0.5 rounded bg-red-600/20 text-red-300 text-[10px] font-bold">
                                                             Added
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-1.5">
+                                                <div className="text-[11px] text-neutral-400 flex flex-wrap items-center gap-1.5 mt-0.5">
                                                     <span>{comp.subCategory}</span>
                                                     {comp.flavor && (
-                                                        <span className="text-purple-300">({comp.flavor})</span>
+                                                        <span className="text-red-300">({comp.flavor})</span>
                                                     )}
                                                     {comp.abv > 0 && <span>• {comp.abv}% ABV</span>}
                                                 </div>
@@ -300,29 +304,26 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                                                     type="button"
                                                     onClick={() => updateComponentDose(comp.rowId, -0.5)}
                                                     disabled={comp.amountCl <= 0}
-                                                    className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 disabled:opacity-40 active:scale-90 transition-transform"
+                                                    className="w-8 h-8 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-300 disabled:opacity-40 active:scale-95 transition-all"
                                                     aria-label={`Decrease ${comp.name}`}
                                                 >
                                                     <Minus className="w-4 h-4" />
                                                 </button>
-
-                                                <span className="w-16 text-center font-mono font-bold text-sm text-amber-300">
+                                                <span className="w-16 text-center font-mono font-bold text-sm text-red-400">
                                                     {formatVolume(comp.amountCl, preferredUnit) || '0 cl'}
                                                 </span>
-
                                                 <button
                                                     type="button"
                                                     onClick={() => updateComponentDose(comp.rowId, 0.5)}
-                                                    className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 active:scale-90 transition-transform"
+                                                    className="w-8 h-8 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-300 active:scale-95 transition-all"
                                                     aria-label={`Increase ${comp.name}`}
                                                 >
                                                     <Plus className="w-4 h-4" />
                                                 </button>
-
                                                 <button
                                                     type="button"
                                                     onClick={() => removeComponent(comp.rowId)}
-                                                    className="w-8 h-8 rounded-lg bg-slate-900 hover:bg-rose-950/60 border border-slate-800 text-slate-500 hover:text-rose-400 flex items-center justify-center transition-colors ml-1"
+                                                    className="w-8 h-8 rounded-xl bg-neutral-900 hover:bg-red-950/70 border border-neutral-800 text-neutral-400 hover:text-red-400 flex items-center justify-center transition-colors ml-1"
                                                     title="Remove ingredient"
                                                 >
                                                     <Trash2 className="w-3.5 h-3.5" />
@@ -330,12 +331,12 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                                             </div>
                                         </div>
 
-                                        {/* Brand / Bottle Variant Selector if multiple bottles share the same SubCategory & Flavor */}
+                                        {/* Brand Switcher */}
                                         {alternatives.length > 1 && (
-                                            <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between gap-2 text-xs">
-                                                <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                                                    <RefreshCw className="w-3 h-3 text-amber-400" />
-                                                    Switch {comp.subCategory} brand:
+                                            <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-between gap-2 text-xs">
+                                                <span className="text-[11px] text-neutral-400 flex items-center gap-1">
+                                                    <RefreshCw className="w-3 h-3 text-red-500" />
+                                                    Switch bottle brand:
                                                 </span>
                                                 <select
                                                     value={comp.ingredientId}
@@ -345,7 +346,7 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                                                         );
                                                         if (found) replaceComponentIngredient(comp.rowId, found);
                                                     }}
-                                                    className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                                                    className="bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1 text-xs text-neutral-200 focus:outline-none focus:border-red-600"
                                                 >
                                                     {alternatives.map((alt) => (
                                                         <option key={alt.id} value={alt.id}>
@@ -361,11 +362,11 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                         </div>
                     </div>
 
-                    {/* Custom Consumption Time (Default: Now, or free picker) */}
+                    {/* Consumption Time */}
                     <div>
-                        <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5 mb-2">
-                            <Clock className="w-3.5 h-3.5 text-amber-400" />
-                            When did you drink this?
+                        <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5 mb-2">
+                            <Clock className="w-3.5 h-3.5 text-red-500" />
+                            When was this consumed?
                         </label>
                         <div className="flex flex-col sm:flex-row gap-2">
                             <button
@@ -373,33 +374,31 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                                 onClick={() => setIsNow(true)}
                                 className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
                                     isNow
-                                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-slate-200'
+                                        ? 'bg-red-600/20 border-red-600 text-red-300'
+                                        : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
                                 }`}
                             >
                                 {isNow && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                                 Now (Default)
                             </button>
-
                             <button
                                 type="button"
                                 onClick={() => setIsNow(false)}
                                 className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${
                                     !isNow
-                                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-slate-200'
+                                        ? 'bg-red-600/20 border-red-600 text-red-300'
+                                        : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
                                 }`}
                             >
                                 Choose Custom Time
                             </button>
-
                             {!isNow && (
                                 <input
                                     type="datetime-local"
                                     value={customConsumedAt}
                                     max={new Date().toISOString().slice(0, 16)}
                                     onChange={(e) => setCustomConsumedAt(e.target.value)}
-                                    className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-amber-500/60 text-xs text-slate-100 focus:outline-none"
+                                    className="flex-1 px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-neutral-100 focus:outline-none focus:border-red-600"
                                 />
                             )}
                         </div>
@@ -409,31 +408,39 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                     <div>
                         <input
                             type="text"
-                            placeholder="Add quick notes (e.g., party, venue)..."
+                            placeholder="Add quick notes (e.g., bar name, party)..."
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
-                            className="w-full px-3 py-2.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/60"
+                            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-red-600"
                         />
+                    </div>
+
+                    {/* Alcohol Safety Disclaimer */}
+                    <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-800/60 text-xs text-red-200 flex items-start gap-2.5">
+                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                        <div className="leading-relaxed">
+                            <strong>Responsible Drinking:</strong> Do not drive if your BAC exceeds 0.50 g/L. Any drink logged here can be edited or deleted within 12 hours from your <strong>My BAC</strong> telemetry page.
+                        </div>
                     </div>
                 </div>
 
                 {/* Footer CTA */}
-                <div className="p-4 bg-slate-900 border-t border-slate-800">
+                <div className="p-4 sm:p-5 bg-neutral-900 border-t border-neutral-800">
                     <button
                         type="button"
                         onClick={handleSubmit}
                         disabled={isSubmitting || metrics.totalVolumeCl <= 0}
-                        className="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-[0.99] transition-all"
+                        className="w-full py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 active:scale-[0.99] transition-all"
                     >
                         {isSubmitting ? (
                             <>
                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                Logging Dose...
+                                <span>Logging Dose...</span>
                             </>
                         ) : (
                             <>
                                 <Check className="w-4 h-4 stroke-[3]" />
-                                Drink &amp; Log This Dose
+                                <span>Drink &amp; Log Dose</span>
                             </>
                         )}
                     </button>

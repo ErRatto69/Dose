@@ -8,12 +8,27 @@ import type {
     DrinkMatchResult,
     Ingredient,
     IngredientSuggestion,
+    PagedResult,
     ReviewItem,
 } from '@/types';
 
 export const drinksApi = {
-    getCatalog: async (): Promise<DrinkCatalogItem[]> => {
-        const { data } = await axiosClient.get<DrinkCatalogItem[]>('/drinks');
+    getCatalog: async (params?: {
+        pageNumber?: number;
+        pageSize?: number;
+        search?: string;
+        glassType?: string;
+    }): Promise<PagedResult<DrinkCatalogItem>> => {
+        const { data } = await axiosClient.get<PagedResult<DrinkCatalogItem>>('/drinks', {
+            params,
+        });
+        return data;
+    },
+
+    getGlassTypes: async (query?: string): Promise<string[]> => {
+        const { data } = await axiosClient.get<string[]>('/drinks/glass-types', {
+            params: { q: query },
+        });
         return data;
     },
 
@@ -32,13 +47,26 @@ export const drinksApi = {
         return data;
     },
 
-    getReviews: async (drinkId: string): Promise<ReviewItem[]> => {
-        const { data } = await axiosClient.get<ReviewItem[]>(`/drinks/${drinkId}/reviews`);
+    getReviews: async (
+        drinkId: string,
+        pageNumber: number = 1,
+        pageSize: number = 8
+    ): Promise<PagedResult<ReviewItem>> => {
+        const { data } = await axiosClient.get<PagedResult<ReviewItem>>(
+            `/drinks/${drinkId}/reviews`,
+            {
+                params: { pageNumber, pageSize },
+            }
+        );
         return data;
     },
 
     upsertReview: async (drinkId: string, rating: number, comment?: string): Promise<void> => {
         await axiosClient.post(`/drinks/${drinkId}/reviews`, { rating, comment });
+    },
+
+    deleteReview: async (reviewId: string): Promise<void> => {
+        await axiosClient.delete(`/reviews/${reviewId}`);
     },
 
     getMyCabinet: async (): Promise<CabinetStatus> => {
@@ -58,14 +86,23 @@ export const drinksApi = {
     },
 
     autocomplete: async (query: string): Promise<IngredientSuggestion[]> => {
-        const { data } = await axiosClient.get<IngredientSuggestion[]>('/ingredients/autocomplete', {
-            params: { q: query },
-        });
+        const { data } = await axiosClient.get<IngredientSuggestion[]>(
+            '/ingredients/autocomplete',
+            {
+                params: { q: query },
+            }
+        );
         return data;
     },
 
-    getAllIngredients: async (): Promise<Ingredient[]> => {
-        const { data } = await axiosClient.get<Ingredient[]>('/ingredients');
+    getAllIngredients: async (params?: {
+        category?: string;
+        search?: string;
+        limit?: number;
+    }): Promise<Ingredient[]> => {
+        const { data } = await axiosClient.get<Ingredient[]>('/ingredients', {
+            params,
+        });
         return data;
     },
 };

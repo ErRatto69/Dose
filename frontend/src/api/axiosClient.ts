@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+const base = import.meta.env.BASE_URL || '/';
+const normalizedBase = base;
+
 export const axiosClient = axios.create({
-    baseURL: '/api',
+    baseURL: `${normalizedBase}api`,
     headers: {
         'Content-Type': 'application/json',
     },
@@ -21,8 +24,8 @@ axiosClient.interceptors.response.use(
         if (error.response?.status === 401) {
             localStorage.removeItem('dose_token');
             localStorage.removeItem('dose_user');
-            if (window.location.pathname !== '/login') {
-                window.location.href = '/login';
+            if (!window.location.pathname.includes('/login')) {
+                window.location.href = `${normalizedBase}login`;
             }
         }
         return Promise.reject(error);

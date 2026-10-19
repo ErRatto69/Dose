@@ -18,6 +18,7 @@ import {
     Clock,
     Check,
     Loader2,
+    AlertTriangle,
 } from 'lucide-react';
 import { matchesSearchQuery } from '@/utils/textSearch';
 
@@ -39,12 +40,15 @@ const getLocalDateTimeInputValue = (date: Date = new Date()): string => {
 const QUICK_POUR_PRESETS = [
     { label: '2 cl (Mini Shot)', cl: 2 },
     { label: '4 cl (Std Shot)', cl: 4 },
-    { label: '15 cl (Glass)', cl: 15 },
+    { label: '15 cl (Wine Glass)', cl: 15 },
     { label: '33 cl (Small Beer)', cl: 33 },
     { label: '50 cl (Pint)', cl: 50 },
 ];
 
-export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({ isOpen, onClose }) => {
+export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
+                                                                                isOpen,
+                                                                                onClose,
+                                                                            }) => {
     const { user } = useAuthStore();
     const { preferredUnit } = usePreferencesStore();
     const queryClient = useQueryClient();
@@ -59,7 +63,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({ is
 
     const { data: allIngredients = [] } = useQuery({
         queryKey: ['all-ingredients'],
-        queryFn: drinksApi.getAllIngredients,
+        queryFn: () => drinksApi.getAllIngredients(),
         enabled: isOpen,
     });
 
@@ -142,6 +146,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({ is
 
     const handleSubmit = async () => {
         if (items.length === 0) return;
+
         try {
             setIsSubmitting(true);
             const consumedAt = isNow
@@ -172,84 +177,81 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({ is
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-neutral-950/80 backdrop-blur-md">
             <div
-                className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-6 duration-200"
+                className="w-full max-w-xl bg-neutral-900 border border-neutral-800 rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
                 role="dialog"
                 aria-modal="true"
             >
                 {/* Header */}
-                <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/95">
+                <div className="p-4 sm:p-5 border-b border-neutral-800 flex items-center justify-between bg-neutral-900">
                     <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                            <Zap className="w-3.5 h-3.5" />
-                            Instant Pour • Not Saved to Catalog
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-500 flex items-center gap-1">
+                            <Zap className="w-3.5 h-3.5 fill-red-500" />
+                            Instant Custom Pour
                         </span>
-                        <h2 className="text-xl font-black text-white">
-                            Quick Shot, Beer or Custom Mix
-                        </h2>
+                        <h2 className="text-xl font-black text-white">Quick Shot, Beer or Mix</h2>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="p-2 text-slate-400 hover:text-white rounded-full bg-slate-800/60 transition-colors"
+                        className="p-2 text-neutral-400 hover:text-white rounded-full bg-neutral-800 transition-colors"
                     >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
                 {/* Live Telemetry Bar */}
-                <div className="px-4 py-3 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between text-xs">
+                <div className="px-5 py-3 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between text-xs">
                     <div>
-                        <span className="text-slate-400 block">Total Volume</span>
-                        <strong className="text-slate-200 text-sm">
+                        <span className="text-neutral-400 block">Total Volume</span>
+                        <strong className="text-neutral-200 text-sm font-mono">
                             {formatVolume(metrics.totalVolumeCl, preferredUnit) || '0 cl'}
                         </strong>
                     </div>
                     <div className="text-center">
-                        <span className="text-slate-400 block">Pure Alcohol</span>
-                        <strong className="text-amber-400 text-sm">
+                        <span className="text-neutral-400 block">Pure Alcohol</span>
+                        <strong className="text-white text-sm font-mono">
                             {metrics.pureAlcoholGrams.toFixed(1)}g
                         </strong>
                     </div>
                     <div className="text-right">
-                        <span className="text-slate-400 block">Estimated Δ BAC</span>
-                        <strong className="text-rose-400 text-sm">
+                        <span className="text-neutral-400 block">Estimated +BAC</span>
+                        <strong className="text-red-400 text-sm font-mono">
                             +{deltaBacEstimate.toFixed(2)} g/L
                         </strong>
                     </div>
                 </div>
 
                 {/* Body */}
-                <div className="p-4 overflow-y-auto space-y-5 flex-1">
-                    {/* Search & Pick Ingredients */}
+                <div className="p-5 overflow-y-auto space-y-5 flex-1">
+                    {/* Search & Select Bottles */}
                     <div>
-                        <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                            1. Search &amp; Tap what you are drinking (e.g., Jägermeister, Vodka, Beer)
+                        <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
+                            1. Select what you are drinking
                         </label>
                         <div className="relative">
-                            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                            <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search spirit, liqueur, beer, wine, or mixer..."
-                                className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                                placeholder="Search spirit, beer, wine, or mixer..."
+                                className="w-full pl-10 pr-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-xs sm:text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600"
                             />
                         </div>
-
                         <div className="flex flex-wrap gap-1.5 mt-2.5 max-h-32 overflow-y-auto p-0.5">
                             {filteredIngredients.map((ing) => (
                                 <button
                                     key={ing.id}
                                     type="button"
                                     onClick={() => addOrIncrementIngredient(ing)}
-                                    className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-amber-500/20 border border-slate-800 hover:border-amber-500/60 text-xs text-slate-200 flex items-center gap-1.5 transition-all"
+                                    className="px-2.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 hover:border-red-600/50 text-xs text-neutral-200 flex items-center gap-1.5 transition-all"
                                 >
-                                    <Plus className="w-3.5 h-3.5 text-amber-400" />
+                                    <Plus className="w-3.5 h-3.5 text-red-500" />
                                     <span className="font-semibold">{ing.name}</span>
                                     {ing.abv > 0 && (
-                                        <span className="text-[10px] font-mono text-amber-400">
+                                        <span className="text-[10px] font-mono text-red-400 font-bold">
                                             {ing.abv}%
                                         </span>
                                     )}
@@ -258,30 +260,29 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({ is
                         </div>
                     </div>
 
-                    {/* Selected Items & Quick Volume Presets */}
+                    {/* Adjust Doses & Quick Presets */}
                     <div className="space-y-2.5">
-                        <label className="text-xs font-semibold text-slate-300 block">
+                        <label className="text-xs font-semibold text-neutral-300 block">
                             2. Adjust Dose ({items.length} selected)
                         </label>
-
                         {items.length === 0 ? (
-                            <div className="p-6 rounded-xl bg-slate-950/50 border border-dashed border-slate-800 text-center text-xs text-slate-500">
-                                Tap one or more bottles above to add them to your glass or shot.
+                            <div className="p-6 rounded-2xl bg-neutral-950 border border-dashed border-neutral-800 text-center text-xs text-neutral-500">
+                                Tap one or more bottles above to add them to your glass.
                             </div>
                         ) : (
                             items.map(({ ingredient, amountCl }) => (
                                 <div
                                     key={ingredient.id}
-                                    className="p-3.5 rounded-xl bg-slate-800/40 border border-slate-800 space-y-2.5"
+                                    className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2.5"
                                 >
                                     <div className="flex items-center justify-between gap-2">
                                         <div>
                                             <div className="text-sm font-bold text-white">
                                                 {ingredient.name}
                                             </div>
-                                            <div className="text-[11px] text-slate-400">
-                                                {ingredient.subCategory}{' '}
-                                                {ingredient.abv > 0 && `• ${ingredient.abv}% ABV`}
+                                            <div className="text-[11px] text-neutral-400">
+                                                {ingredient.subCategory}
+                                                {ingredient.abv > 0 && ` • ${ingredient.abv}% ABV`}
                                             </div>
                                         </div>
 
@@ -289,41 +290,41 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({ is
                                             <button
                                                 type="button"
                                                 onClick={() => updateDose(ingredient.id, -0.5)}
-                                                className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200"
+                                                className="w-8 h-8 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-200"
                                             >
                                                 <Minus className="w-4 h-4" />
                                             </button>
-                                            <span className="w-16 text-center font-mono font-bold text-sm text-amber-300">
+                                            <span className="w-16 text-center font-mono font-bold text-sm text-red-400">
                                                 {formatVolume(amountCl, preferredUnit)}
                                             </span>
                                             <button
                                                 type="button"
                                                 onClick={() => updateDose(ingredient.id, 0.5)}
-                                                className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200"
+                                                className="w-8 h-8 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-200"
                                             >
                                                 <Plus className="w-4 h-4" />
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => removeItem(ingredient.id)}
-                                                className="w-8 h-8 rounded-lg bg-slate-900 hover:bg-rose-950/60 border border-slate-800 text-slate-400 hover:text-rose-400 flex items-center justify-center ml-1"
+                                                className="w-8 h-8 rounded-xl bg-neutral-900 hover:bg-red-950/70 border border-neutral-800 text-neutral-400 hover:text-red-400 flex items-center justify-center ml-1 transition-colors"
                                             >
                                                 <Trash2 className="w-3.5 h-3.5" />
                                             </button>
                                         </div>
                                     </div>
 
-                                    {/* Quick Size Chips (2cl, 4cl, 15cl, 33cl, 50cl) */}
-                                    <div className="flex flex-wrap gap-1.5 pt-1 border-t border-slate-800/80">
+                                    {/* Presets */}
+                                    <div className="flex flex-wrap gap-1.5 pt-1 border-t border-neutral-800/80">
                                         {QUICK_POUR_PRESETS.map((preset) => (
                                             <button
                                                 key={preset.cl}
                                                 type="button"
                                                 onClick={() => setExactDose(ingredient.id, preset.cl)}
-                                                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all ${
                                                     amountCl === preset.cl
-                                                        ? 'bg-amber-500 text-slate-950 border-amber-500'
-                                                        : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-slate-200'
+                                                        ? 'bg-red-600 text-white border-red-600'
+                                                        : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
                                                 }`}
                                             >
                                                 {preset.label}
@@ -344,24 +345,23 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({ is
                         />
                     )}
 
-                    {/* Optional Custom Label & Time */}
+                    {/* Custom Label & Time */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs font-semibold text-slate-400 block mb-1">
-                                Optional Label (auto-generated if blank)
+                            <label className="text-xs font-semibold text-neutral-300 block mb-1">
+                                Optional Label
                             </label>
                             <input
                                 type="text"
                                 value={customName}
                                 onChange={(e) => setCustomName(e.target.value)}
-                                placeholder="e.g., Jäger Shot, Vodka & Bull..."
-                                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                                placeholder="e.g., Shot, Double Vodka..."
+                                className="w-full px-3 py-2 text-xs rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-red-600"
                             />
                         </div>
-
                         <div>
-                            <label className="text-xs font-semibold text-slate-400 flex items-center gap-1 mb-1">
-                                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                            <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1 mb-1">
+                                <Clock className="w-3.5 h-3.5 text-red-500" />
                                 Time
                             </label>
                             <div className="flex gap-1.5">
@@ -370,8 +370,8 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({ is
                                     onClick={() => setIsNow(true)}
                                     className={`px-3 py-2 rounded-xl text-xs font-bold border ${
                                         isNow
-                                            ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                                            : 'bg-slate-950 border-slate-800 text-slate-400'
+                                            ? 'bg-red-600/20 border-red-600 text-red-300'
+                                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
                                     }`}
                                 >
                                     Now
@@ -383,30 +383,38 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({ is
                                         setCustomConsumedAt(e.target.value);
                                         setIsNow(false);
                                     }}
-                                    className="flex-1 px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200"
+                                    className="flex-1 px-2.5 py-1.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-neutral-200 focus:outline-none focus:border-red-600"
                                 />
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Safety Disclaimer Callout */}
+                    <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-800/60 text-xs text-red-200 flex items-start gap-2.5">
+                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                        <div className="leading-relaxed">
+                            <strong>Responsible Drinking:</strong> Do not drive if your BAC exceeds 0.50 g/L. Any drink logged here can be edited or deleted within 12 hours from your <strong>My BAC</strong> telemetry page.
                         </div>
                     </div>
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 bg-slate-900 border-t border-slate-800">
+                <div className="p-4 sm:p-5 bg-neutral-900 border-t border-neutral-800">
                     <button
                         type="button"
                         onClick={handleSubmit}
                         disabled={isSubmitting || items.length === 0 || metrics.totalVolumeCl <= 0}
-                        className="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+                        className="w-full py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 active:scale-[0.99] transition-all"
                     >
                         {isSubmitting ? (
                             <>
                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                Logging...
+                                <span>Logging...</span>
                             </>
                         ) : (
                             <>
                                 <Check className="w-4 h-4 stroke-[3]" />
-                                Drink &amp; Log Custom Pour
+                                <span>Drink &amp; Log Custom Pour</span>
                             </>
                         )}
                     </button>

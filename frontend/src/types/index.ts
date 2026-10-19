@@ -1,5 +1,7 @@
 export type UserRole = 'Admin' | 'Bartender' | 'Drinker';
+
 export type BiologicalSex = 'Male' | 'Female';
+
 export type IngredientCategory =
     | 'Spirit'
     | 'Liqueur'
@@ -9,9 +11,22 @@ export type IngredientCategory =
     | 'Syrup'
     | 'Garnish'
     | 'Pantry';
+
 export type VolumeUnit = 'cl' | 'oz' | 'Cl' | 'Oz';
+
 export type BacSafetyLevel = 'Sober' | 'Safe' | 'Caution' | 'Warning' | 'Critical';
+
 export type MatchType = 'EXACT' | 'MISSING_ONE' | 'MISSING_TWO';
+
+export interface PagedResult<T> {
+    items: T[];
+    totalCount: number;
+    pageNumber: number;
+    pageSize: number;
+    totalPages: number;
+    hasPreviousPage: boolean;
+    hasNextPage: boolean;
+}
 
 export interface UserProfile {
     id: string;
@@ -24,6 +39,32 @@ export interface UserProfile {
     birthYear?: number;
     preferredUnit: VolumeUnit;
     isActive: boolean;
+}
+
+export interface RegistrationRequestItem {
+    id: string;
+    username: string;
+    email: string;
+    weightKg: number;
+    heightCm: number;
+    sex: BiologicalSex;
+    birthYear?: number;
+    requestNote?: string;
+    clientIpAddress?: string;
+    status: 'Pending' | 'Approved' | 'Rejected';
+    createdAt: string;
+}
+
+export interface CreateRegistrationRequestPayload {
+    username: string;
+    email: string;
+    password: string;
+    weightKg: number;
+    heightCm: number;
+    sex: BiologicalSex;
+    birthYear?: number | null;
+    requestNote?: string;
+    websiteUrl?: string; // Honeypot field
 }
 
 export interface UpdateBiometricsRequest {
@@ -145,6 +186,7 @@ export interface DrinkDetail {
 export interface ReviewItem {
     id: string;
     drinkId: string;
+    drinkName: string;
     userId: string;
     username: string;
     rating: number;
@@ -190,11 +232,23 @@ export interface BacTimelinePoint {
     bacGramsPerLiter: number;
 }
 
+export interface LoggedDrinkComponent {
+    ingredientId?: string | null;
+    name: string;
+    category: IngredientCategory | string;
+    abv: number;
+    amountCl: number;
+}
+
 export interface DrinkEvent {
     logId: string;
     drinkName: string;
     consumedAt: string;
     pureAlcoholGrams: number;
+    totalVolumeCl?: number;
+    effectiveAbv?: number;
+    notes?: string | null;
+    components?: LoggedDrinkComponent[];
 }
 
 export interface BacStatus {
@@ -222,6 +276,13 @@ export interface DrinkLogResponse {
         bottleScore1To10: number;
     };
     updatedBacStatus: BacStatus;
+}
+
+export interface UpdateDrinkLogRequest {
+    customName?: string;
+    consumedAt?: string;
+    notes?: string;
+    components: CustomIngredientDose[];
 }
 
 export interface RankingTier {
@@ -259,6 +320,10 @@ export interface AdminUserBacOverview {
     safetyLevel: BacSafetyLevel;
     estimatedSoberAt?: string;
     totalDrinksLast12h: number;
+}
+
+export interface AdminBacOverviewPagedResponse extends PagedResult<AdminUserBacOverview> {
+    criticalCount: number;
 }
 
 export interface LogCustomDrinkRequest {
