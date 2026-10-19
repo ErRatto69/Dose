@@ -115,7 +115,7 @@ public class DrinkLogsEndpoints : IEndpoint
 
             var bacResult = await ComputeCurrentUserBacAsync(user, context, bacCalculator, dateTimeProvider, ct);
 
-            return Results.Created($"/api/drink-logs/{drinkLog.Id}", new DrinkLogResponseDto(
+            return Results.Created($"/api/drinks/logs/{drinkLog.Id}", new DrinkLogResponseDto(
                 drinkLog.Id,
                 drinkLog.DrinkNameSnapshot,
                 drinkLog.IsCustomized,
@@ -131,7 +131,7 @@ public class DrinkLogsEndpoints : IEndpoint
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        // 2. Log a Quick Pour / Shot / Custom Drink (Not saved in Drinks Catalog)
+        // 2. Log a Quick Pour / Shot / Custom Drink
         group.MapPost("/custom/log", async (
             LogCustomDrinkRequestDto request,
             ICurrentUserService currentUserService,
@@ -197,7 +197,7 @@ public class DrinkLogsEndpoints : IEndpoint
 
             var drinkLog = new DrinkLog(
                 userId,
-                drinkId: null, // Not tied to a catalog recipe
+                drinkId: null,
                 generatedName,
                 isCustomized: true,
                 consumptionTime,
@@ -215,7 +215,7 @@ public class DrinkLogsEndpoints : IEndpoint
 
             var bacResult = await ComputeCurrentUserBacAsync(user, context, bacCalculator, dateTimeProvider, ct);
 
-            return Results.Created($"/api/drink-logs/{drinkLog.Id}", new DrinkLogResponseDto(
+            return Results.Created($"/api/drinks/logs/{drinkLog.Id}", new DrinkLogResponseDto(
                 drinkLog.Id,
                 drinkLog.DrinkNameSnapshot,
                 drinkLog.IsCustomized,
@@ -228,6 +228,134 @@ public class DrinkLogsEndpoints : IEndpoint
                 ),
                 bacResult
             ));
+        })
+        .RequireAuthorization("RequireAuthenticatedDrinker");
+
+        // 3. Edit a Drink Log from the last 12 hours
+        group.MapPut("/logs/{logId:guid}", async (
+            Guid logId,
+            UpdateDrinkLogRequestDto request,
+            ICurrentUserService currentUserService,
+            IApplicationDbContext context,
+            IDrinkStrengthCalculator strengthCalculator,
+            IBacCalculator bacCalculator,
+            IDateTimeProvider dateTimeProvider,
+            CancellationToken ct) =>
+        {
+            var userId = currentUserService.UserId ?? throw new UnauthorizedException();
+            var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+                ?? throw new NotFoundException(nameof(User), userId);
+
+            var drinkLog = await context.DrinkLogs
+                .Include(l => l.Items)
+                .FirstOrDefaultAsync(l => l.Id == logId && l.UserId == userId, ct)
+                ?? throw new NotFoundException(nameof(DrinkLog), logId);
+
+            DateTimeOffset now = dateTimeProvider.UtcNow;
+            if (drinkLog.ConsumedAt < now.AddHours(-12))
+                throw new DomainException("Only drinks logged within the last 12 hours can be modified.");
+
+            if (request.Components is null || request.Components.Count == 0)
+                throw new DomainException("At least one ingredient with a positive amount is required.");
+
+            var ingredientIds = request.Components.Select(c => c.IngredientId).Distinct().ToList();
+            var dbIngredients = await context.Ingredients
+                .Where(i => ingredientIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, ct);
+
+            var newItems = new List<DrinkLogItem>();
+            var strengthInputs = new List<RecipeComponentInput>();
+
+            foreach (var comp in request.Components)
+            {
+                if (comp.AmountCl <= 0 || !dbIngredients.TryGetValue(comp.IngredientId, out var ing))
+                    continue;
+
+                decimal pureAlcoholGrams = ing.Abv > 0
+                    ? PureAlcohol.FromClAndAbv(comp.AmountCl, ing.Abv).Grams
+                    : 0.00m;
+
+                newItems.Add(new DrinkLogItem(
+                    ing.Id,
+                    ing.Name,
+                    ing.Category,
+                    ing.Abv,
+                    comp.AmountCl,
+                    pureAlcoholGrams
+                ));
+
+                strengthInputs.Add(new RecipeComponentInput(ing.Category, comp.AmountCl, ing.Abv));
+            }
+
+            if (newItems.Count == 0)
+                throw new DomainException("Total volume must be greater than zero.");
+
+            var metrics = strengthCalculator.CalculateMetrics(strengthInputs);
+            DateTimeOffset updatedConsumedAt = request.ConsumedAt ?? drinkLog.ConsumedAt;
+            if (updatedConsumedAt < now.AddHours(-12) || updatedConsumedAt > now.AddMinutes(5))
+                throw new DomainException("Consumption time must be within the last 12 hours.");
+
+            string updatedName = !string.IsNullOrWhiteSpace(request.CustomName)
+                ? request.CustomName.Trim()
+                : drinkLog.DrinkNameSnapshot;
+
+            context.DrinkLogItems.RemoveRange(drinkLog.Items);
+            drinkLog.ClearItems();
+
+            drinkLog.UpdateLogDetails(
+                updatedName,
+                isCustomized: true,
+                updatedConsumedAt,
+                metrics.TotalLiquidVolumeCl,
+                metrics.FinalAbvPercent,
+                metrics.PureAlcohol,
+                request.Notes
+            );
+
+            foreach (var item in newItems)
+                drinkLog.AddItem(item);
+
+            await context.SaveChangesAsync(ct);
+
+            var bacResult = await ComputeCurrentUserBacAsync(user, context, bacCalculator, dateTimeProvider, ct);
+
+            return Results.Ok(new DrinkLogResponseDto(
+                drinkLog.Id,
+                drinkLog.DrinkNameSnapshot,
+                drinkLog.IsCustomized,
+                drinkLog.ConsumedAt,
+                new LoggedMetricsDto(
+                    drinkLog.TotalVolumeCl,
+                    drinkLog.EffectiveAbv,
+                    drinkLog.TotalPureAlcoholGrams,
+                    metrics.BottleScore1To10
+                ),
+                bacResult
+            ));
+        })
+        .RequireAuthorization("RequireAuthenticatedDrinker");
+
+        // 4. Delete a Drink Log from the last 12 hours
+        group.MapDelete("/logs/{logId:guid}", async (
+            Guid logId,
+            ICurrentUserService currentUserService,
+            IApplicationDbContext context,
+            IDateTimeProvider dateTimeProvider,
+            CancellationToken ct) =>
+        {
+            var userId = currentUserService.UserId ?? throw new UnauthorizedException();
+
+            var drinkLog = await context.DrinkLogs
+                .FirstOrDefaultAsync(l => l.Id == logId && l.UserId == userId, ct)
+                ?? throw new NotFoundException(nameof(DrinkLog), logId);
+
+            if (drinkLog.ConsumedAt < dateTimeProvider.UtcNow.AddHours(-12))
+                throw new DomainException("Only drinks logged within the last 12 hours can be removed.");
+
+            context.DrinkLogs.Remove(drinkLog);
+            await context.SaveChangesAsync(ct);
+
+            return Results.NoContent();
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
     }
@@ -245,7 +373,7 @@ public class DrinkLogsEndpoints : IEndpoint
         var pastEvents = await context.DrinkLogs
             .AsNoTracking()
             .Where(l => l.UserId == user.Id && l.ConsumedAt >= twelveHoursAgo && l.ConsumedAt <= now)
-            .Select(l => new DrinkEventInput(l.Id, l.DrinkNameSnapshot, l.ConsumedAt, l.TotalPureAlcoholGrams))
+            .Select(l => new DrinkEventInput(l.Id, l.DrinkNameSnapshot, l.ConsumedAt, l.TotalPureAlcoholGrams, l.TotalVolumeCl, l.EffectiveAbv, l.Notes, null))
             .ToListAsync(ct);
 
         return bacCalculator.ComputeRollingBac(

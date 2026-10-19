@@ -21,7 +21,8 @@ public class LeaderboardEndpoints : IEndpoint
             int year = now.Year;
             int month = now.Month;
 
-            if (!string.IsNullOrWhiteSpace(period) && DateTime.TryParseExact(period, "yyyy-MM", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
+            if (!string.IsNullOrWhiteSpace(period) &&
+                DateTime.TryParseExact(period, "yyyy-MM", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
             {
                 year = parsedDate.Year;
                 month = parsedDate.Month;
@@ -35,9 +36,10 @@ public class LeaderboardEndpoints : IEndpoint
                 .OrderBy(t => t.TierOrder)
                 .ToListAsync(ct);
 
+            // Fetch only the top 15 active users for the selected month
             var monthLogs = await context.DrinkLogs
                 .AsNoTracking()
-                .Where(l => l.ConsumedAt >= startOfMonth && l.ConsumedAt < endOfMonth)
+                .Where(l => l.ConsumedAt >= startOfMonth && l.ConsumedAt < endOfMonth && l.User.IsActive)
                 .GroupBy(l => l.UserId)
                 .Select(g => new
                 {
@@ -46,18 +48,20 @@ public class LeaderboardEndpoints : IEndpoint
                     TotalGrams = g.Sum(x => x.TotalPureAlcoholGrams),
                     TotalCl = g.Sum(x => x.TotalPureAlcoholCl)
                 })
+                .OrderByDescending(x => x.TotalGrams)
+                .Take(15)
                 .ToListAsync(ct);
 
             var userIds = monthLogs.Select(m => m.UserId).ToList();
             var users = await context.Users
                 .AsNoTracking()
-                .Where(u => userIds.Contains(u.Id))
+                .Where(u => userIds.Contains(u.Id) && u.IsActive)
                 .ToDictionaryAsync(u => u.Id, ct);
 
             var entries = new List<LeaderboardEntryDto>();
             int rank = 1;
 
-            foreach (var logAgg in monthLogs.OrderByDescending(x => x.TotalGrams))
+            foreach (var logAgg in monthLogs)
             {
                 if (!users.TryGetValue(logAgg.UserId, out var user))
                     continue;
@@ -79,7 +83,9 @@ public class LeaderboardEndpoints : IEndpoint
                 {
                     decimal tierSpan = nextTier.MinPureAlcoholGrams - achievedTier.MinPureAlcoholGrams;
                     decimal currentProgress = logAgg.TotalGrams - achievedTier.MinPureAlcoholGrams;
-                    progressPercent = tierSpan > 0 ? Math.Clamp(Math.Round((currentProgress / tierSpan) * 100m, 1), 0m, 100m) : 100m;
+                    progressPercent = tierSpan > 0
+                        ? Math.Clamp(Math.Round((currentProgress / tierSpan) * 100m, 1), 0m, 100m)
+                        : 100m;
                     gramsToNext = Math.Max(0m, nextTier.MinPureAlcoholGrams - logAgg.TotalGrams);
                 }
 

@@ -8,6 +8,7 @@ public class DoseDbContext(DbContextOptions<DoseDbContext> options)
     : DbContext(options), IApplicationDbContext
 {
     public DbSet<User> Users => Set<User>();
+    public DbSet<RegistrationRequest> RegistrationRequests => Set<RegistrationRequest>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<Drink> Drinks => Set<Drink>();
     public DbSet<DrinkIngredient> DrinkIngredients => Set<DrinkIngredient>();
@@ -21,11 +22,9 @@ public class DoseDbContext(DbContextOptions<DoseDbContext> options)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Instruct Npgsql to generate "CREATE EXTENSION IF NOT EXISTS ..." at migration start
         modelBuilder.HasPostgresExtension("pgcrypto");
         modelBuilder.HasPostgresExtension("pg_trgm");
 
-        // Apply all entity configurations
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DoseDbContext).Assembly);
     }
 }

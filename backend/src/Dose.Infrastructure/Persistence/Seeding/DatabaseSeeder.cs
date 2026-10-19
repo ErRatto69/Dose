@@ -17,12 +17,34 @@ public class DatabaseSeeder(
 {
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        // 1. Ensure required columns and index exist on PostgreSQL
+        // 1. Ensure required columns, tables, and indexes exist on PostgreSQL
         await context.Database.ExecuteSqlRawAsync("""
-            ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS "SubCategory" character varying(60) NOT NULL DEFAULT 'Generic';
-            ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS "Flavor" character varying(60) NULL;
-            CREATE INDEX IF NOT EXISTS "IX_ingredients_SubCategory_Flavor" ON ingredients ("SubCategory", "Flavor");
-            """, cancellationToken);
+                                                  ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS "SubCategory" character varying(60) NOT NULL DEFAULT 'Generic';
+                                                  ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS "Flavor" character varying(60) NULL;
+                                                  CREATE INDEX IF NOT EXISTS "IX_ingredients_SubCategory_Flavor" ON ingredients ("SubCategory", "Flavor");
+
+                                                  CREATE TABLE IF NOT EXISTS registration_requests (
+                                                      "Id" uuid NOT NULL DEFAULT gen_random_uuid(),
+                                                      "Username" character varying(50) NOT NULL,
+                                                      "Email" character varying(120) NOT NULL,
+                                                      "PasswordHash" character varying(255) NOT NULL,
+                                                      "WeightKg" numeric(5,2) NOT NULL,
+                                                      "HeightCm" numeric(5,2) NOT NULL,
+                                                      "Sex" character varying(10) NOT NULL,
+                                                      "BirthYear" integer NULL,
+                                                      "RequestNote" character varying(300) NULL,
+                                                      "ClientIpAddress" character varying(64) NULL,
+                                                      "Status" character varying(20) NOT NULL DEFAULT 'Pending',
+                                                      "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                                                      "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                                                      CONSTRAINT "PK_registration_requests" PRIMARY KEY ("Id")
+                                                  );
+                                                  CREATE INDEX IF NOT EXISTS "IX_registration_requests_Status" ON registration_requests ("Status");
+                                                  CREATE INDEX IF NOT EXISTS "IX_registration_requests_ClientIpAddress" ON registration_requests ("ClientIpAddress");
+
+                                                  UPDATE ranking_tiers SET "BadgeIcon" = 'beer' WHERE "Name" = 'Casual Drinker';
+                                                  UPDATE ranking_tiers SET "BadgeIcon" = 'martini' WHERE "Name" = 'Amateur Mixer';
+                                                  """, cancellationToken);
 
         // 2. Seed Ranking Tiers
         if (!await context.RankingTiers.AnyAsync(cancellationToken))
@@ -36,7 +58,7 @@ public class DatabaseSeeder(
         if (!await context.Users.AnyAsync(u => u.Role == UserRole.Admin, cancellationToken))
         {
             logger.LogInformation("Seeding default admin user...");
-            string adminPassword = configuration["Admin:InitialPassword"] ?? "AdminDose2026!";
+            string adminPassword = "AdminDose2026!";
             string passwordHash = passwordHasher.HashPassword(adminPassword);
 
             var admin = new User(

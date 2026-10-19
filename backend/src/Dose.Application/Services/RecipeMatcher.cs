@@ -35,8 +35,13 @@ public class RecipeMatcher : IRecipeMatcher
 
             int matchedCount = essentialRecipeItems.Count - missingEssential.Count;
 
-            // Never suggest a drink if the user has 0 matching ingredients for it!
             if (matchedCount <= 0 || missingEssential.Count > maxMissingAllowed)
+                continue;
+
+            int matchPercentage = (int)Math.Round((double)matchedCount / essentialRecipeItems.Count * 100.0);
+
+            // Require at least 50% of essential ingredients to suggest the drink
+            if (matchPercentage < 50)
                 continue;
 
             var missingGarnishes = drink.DrinkIngredients
@@ -44,8 +49,6 @@ public class RecipeMatcher : IRecipeMatcher
                              && !availableIngredients.Any(userIng => userIng.MatchesRequirement(di.Ingredient)))
                 .Select(di => di.Ingredient.Name)
                 .ToList();
-
-            int matchPercentage = (int)Math.Round((double)matchedCount / essentialRecipeItems.Count * 100.0);
 
             string matchType = missingEssential.Count switch
             {

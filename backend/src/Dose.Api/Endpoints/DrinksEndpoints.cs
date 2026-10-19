@@ -2,6 +2,7 @@
 using Dose.Api.Common;
 using Dose.Application.Common.Exceptions;
 using Dose.Application.Common.Interfaces;
+using Dose.Application.Common.Models;
 using Dose.Application.Features.Drinks.Commands;
 using Dose.Application.Features.Drinks.Dtos;
 using Dose.Application.Services;
@@ -17,16 +18,65 @@ public class DrinksEndpoints : IEndpoint
 {
     private const decimal ClToOzFactor = 0.33814m;
 
+    private static readonly string[] CanonicalGlassTypes =
+    [
+        "Highball",
+        "Old Fashioned",
+        "Coupe",
+        "Martini",
+        "Wine",
+        "Flute",
+        "Hurricane",
+        "Copper Mug",
+        "Shot",
+        "Collins",
+        "Nick & Nora",
+        "Irish Coffee Mug",
+        "Tiki Mug",
+        "Pint"
+    ];
+
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/drinks").WithTags("Drinks");
 
-        group.MapGet("/", async (IApplicationDbContext context, CancellationToken ct) =>
+        // Paginated & Searchable Drinks Catalog
+        group.MapGet("/", async (
+            int? pageNumber,
+            int? pageSize,
+            string? search,
+            string? glassType,
+            IApplicationDbContext context,
+            CancellationToken ct) =>
         {
-            var drinks = await context.Drinks
+            int page = Math.Max(1, pageNumber ?? 1);
+            int size = Math.Clamp(pageSize ?? 12, 1, 50);
+
+            var query = context.Drinks
                 .AsNoTracking()
-                .Where(d => d.IsPublished)
+                .Where(d => d.IsPublished);
+
+            if (!string.IsNullOrWhiteSpace(glassType))
+            {
+                string g = glassType.Trim().ToLowerInvariant();
+                query = query.Where(d => d.GlassType != null && d.GlassType.ToLower() == g);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string s = search.Trim().ToLowerInvariant();
+                query = query.Where(d =>
+                    d.Name.ToLower().Contains(s) ||
+                    d.Description.ToLower().Contains(s) ||
+                    (d.GlassType != null && d.GlassType.ToLower().Contains(s)));
+            }
+
+            int totalCount = await query.CountAsync(ct);
+
+            var items = await query
                 .OrderBy(d => d.Name)
+                .Skip((page - 1) * size)
+                .Take(size)
                 .Select(d => new DrinkCatalogItemDto(
                     d.Id,
                     d.Name,
@@ -42,7 +92,18 @@ public class DrinksEndpoints : IEndpoint
                 ))
                 .ToListAsync(ct);
 
-            return Results.Ok(drinks);
+            return Results.Ok(new PagedResult<DrinkCatalogItemDto>(items, totalCount, page, size));
+        })
+        .RequireAuthorization("RequireAuthenticatedDrinker");
+
+        // Searchable Glass Types list (returns max 8 at a time so it never loads everything at once)
+        group.MapGet("/glass-types", (string? q) =>
+        {
+            var matches = string.IsNullOrWhiteSpace(q)
+                ? CanonicalGlassTypes.Take(8)
+                : CanonicalGlassTypes.Where(g => g.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase)).Take(8);
+
+            return Results.Ok(matches.ToList());
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 

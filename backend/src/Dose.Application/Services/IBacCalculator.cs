@@ -2,11 +2,23 @@
 
 namespace Dose.Application.Services;
 
+public record LoggedDrinkComponentDto(
+    Guid? IngredientId,
+    string Name,
+    string Category,
+    decimal Abv,
+    decimal AmountCl
+);
+
 public record DrinkEventInput(
     Guid LogId,
     string DrinkName,
     DateTimeOffset ConsumedAt,
-    decimal PureAlcoholGrams
+    decimal PureAlcoholGrams,
+    decimal TotalVolumeCl = 0m,
+    decimal EffectiveAbv = 0m,
+    string? Notes = null,
+    IReadOnlyList<LoggedDrinkComponentDto>? Components = null
 );
 
 public record BacTimelinePoint(

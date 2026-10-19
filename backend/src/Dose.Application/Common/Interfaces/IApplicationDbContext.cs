@@ -6,6 +6,7 @@ namespace Dose.Application.Common.Interfaces;
 public interface IApplicationDbContext
 {
     DbSet<User> Users { get; }
+    DbSet<RegistrationRequest> RegistrationRequests { get; }
     DbSet<Ingredient> Ingredients { get; }
     DbSet<Drink> Drinks { get; }
     DbSet<DrinkIngredient> DrinkIngredients { get; }

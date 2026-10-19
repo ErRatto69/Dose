@@ -4,6 +4,7 @@ using Dose.Application.Common.Interfaces;
 using Dose.Application.Features.Ingredients.Commands;
 using Dose.Application.Features.Ingredients.Dtos;
 using Dose.Domain.Entities;
+using Dose.Domain.Enums;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using ValidationException = Dose.Application.Common.Exceptions.ValidationException;
@@ -16,13 +17,42 @@ public class IngredientsEndpoints : IEndpoint
     {
         var group = app.MapGroup("/api/ingredients").WithTags("Ingredients");
 
-        group.MapGet("/", async (IApplicationDbContext context, CancellationToken ct) =>
+        group.MapGet("/", async (
+            string? category,
+            string? search,
+            int? limit,
+            IApplicationDbContext context,
+            CancellationToken ct) =>
         {
-            var ingredients = await context.Ingredients
-                .AsNoTracking()
+            var query = context.Ingredients.AsNoTracking().AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(category) &&
+                !category.Equals("ALL", StringComparison.OrdinalIgnoreCase) &&
+                Enum.TryParse<IngredientCategory>(category, true, out var parsedCat))
+            {
+                query = query.Where(i => i.Category == parsedCat);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string s = search.Trim().ToLowerInvariant();
+                query = query.Where(i =>
+                    i.Name.ToLower().Contains(s) ||
+                    i.SubCategory.ToLower().Contains(s) ||
+                    (i.Flavor != null && i.Flavor.ToLower().Contains(s)));
+            }
+
+            query = query
                 .OrderBy(i => i.Category)
                 .ThenBy(i => i.SubCategory)
-                .ThenBy(i => i.Name)
+                .ThenBy(i => i.Name);
+
+            if (limit.HasValue && limit.Value > 0)
+            {
+                query = query.Take(Math.Clamp(limit.Value, 1, 200));
+            }
+
+            var ingredients = await query
                 .Select(i => new IngredientDto(
                     i.Id,
                     i.Name,
@@ -127,7 +157,7 @@ public class IngredientsEndpoints : IEndpoint
         })
         .RequireAuthorization("RequireBartenderOrAdmin");
     }
-    
+
     private static string RemoveDiacritics(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return string.Empty;

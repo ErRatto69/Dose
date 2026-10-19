@@ -51,6 +51,34 @@ public class DrinkLog : BaseEntity
         Notes = notes?.Trim();
     }
 
+    public void UpdateLogDetails(
+        string drinkNameSnapshot,
+        bool isCustomized,
+        DateTimeOffset consumedAt,
+        decimal totalVolumeCl,
+        decimal effectiveAbv,
+        PureAlcohol pureAlcohol,
+        string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(drinkNameSnapshot))
+            throw new DomainException("The registered drink name cannot be empty.");
+
+        DrinkNameSnapshot = drinkNameSnapshot.Trim();
+        IsCustomized = isCustomized;
+        ConsumedAt = consumedAt;
+        TotalVolumeCl = Math.Round(totalVolumeCl, 2);
+        EffectiveAbv = Math.Round(effectiveAbv, 2);
+        TotalPureAlcoholCl = pureAlcohol.PureAlcoholCl;
+        TotalPureAlcoholGrams = pureAlcohol.Grams;
+        Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        UpdateTimestamp();
+    }
+
+    public void ClearItems()
+    {
+        Items.Clear();
+    }
+
     public void AddItem(DrinkLogItem item)
     {
         Items.Add(item);

@@ -3,6 +3,7 @@
 public record ReviewDto(
     Guid Id,
     Guid DrinkId,
+    string DrinkName,
     Guid UserId,
     string Username,
     short Rating,

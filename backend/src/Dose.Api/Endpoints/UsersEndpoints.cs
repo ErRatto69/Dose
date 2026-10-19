@@ -1,10 +1,12 @@
 ﻿using Dose.Api.Common;
 using Dose.Application.Common.Exceptions;
 using Dose.Application.Common.Interfaces;
+using Dose.Application.Common.Models;
 using Dose.Application.Features.Users.Commands;
 using Dose.Application.Features.Users.Dtos;
 using Dose.Domain.Common;
 using Dose.Domain.Entities;
+using Dose.Domain.Enums;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using ValidationException = Dose.Application.Common.Exceptions.ValidationException;
@@ -54,6 +56,7 @@ public class UsersEndpoints : IEndpoint
                 ?? throw new NotFoundException(nameof(User), userId);
 
             user.UpdateBiometrics(command.WeightKg, command.HeightCm, command.Sex, command.BirthYear);
+
             if (command.PreferredUnit.HasValue)
             {
                 user.SetPreferredUnit(command.PreferredUnit.Value);
@@ -65,14 +68,33 @@ public class UsersEndpoints : IEndpoint
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        // Admin: Get All Users
+        // Admin: Get Paginated Users with Search
         group.MapGet("/", async (
+            int? pageNumber,
+            int? pageSize,
+            string? search,
             IApplicationDbContext context,
             CancellationToken ct) =>
         {
-            var users = await context.Users
-                .AsNoTracking()
+            int page = Math.Max(1, pageNumber ?? 1);
+            int size = Math.Clamp(pageSize ?? 12, 1, 50);
+
+            var query = context.Users.AsNoTracking().AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string s = search.Trim().ToLowerInvariant();
+                query = query.Where(u =>
+                    u.Username.ToLower().Contains(s) ||
+                    u.Email.ToLower().Contains(s));
+            }
+
+            int totalCount = await query.CountAsync(ct);
+
+            var items = await query
                 .OrderBy(u => u.Username)
+                .Skip((page - 1) * size)
+                .Take(size)
                 .Select(u => new UserProfileDto(
                     u.Id,
                     u.Username,
@@ -87,7 +109,106 @@ public class UsersEndpoints : IEndpoint
                 ))
                 .ToListAsync(ct);
 
-            return Results.Ok(users);
+            return Results.Ok(new PagedResult<UserProfileDto>(items, totalCount, page, size));
+        })
+        .RequireAuthorization("RequireAdmin");
+
+        // Admin: Get Pending Registration Requests (Paginated)
+        group.MapGet("/registration-requests", async (
+            int? pageNumber,
+            int? pageSize,
+            IApplicationDbContext context,
+            CancellationToken ct) =>
+        {
+            int page = Math.Max(1, pageNumber ?? 1);
+            int size = Math.Clamp(pageSize ?? 10, 1, 50);
+
+            var query = context.RegistrationRequests
+                .AsNoTracking()
+                .Where(r => r.Status == RegistrationRequestStatus.Pending);
+
+            int totalCount = await query.CountAsync(ct);
+
+            var items = await query
+                .OrderByDescending(r => r.CreatedAt)
+                .Skip((page - 1) * size)
+                .Take(size)
+                .Select(r => new RegistrationRequestDto(
+                    r.Id,
+                    r.Username,
+                    r.Email,
+                    r.WeightKg,
+                    r.HeightCm,
+                    r.Sex,
+                    r.BirthYear,
+                    r.RequestNote,
+                    r.ClientIpAddress,
+                    r.Status,
+                    r.CreatedAt
+                ))
+                .ToListAsync(ct);
+
+            return Results.Ok(new PagedResult<RegistrationRequestDto>(items, totalCount, page, size));
+        })
+        .RequireAuthorization("RequireAdmin");
+
+        // Admin: Approve Registration Request -> Creates Active User
+        group.MapPost("/registration-requests/{id:guid}/approve", async (
+            Guid id,
+            IApplicationDbContext context,
+            CancellationToken ct) =>
+        {
+            var req = await context.RegistrationRequests.FirstOrDefaultAsync(r => r.Id == id, ct)
+                ?? throw new NotFoundException(nameof(RegistrationRequest), id);
+
+            if (req.Status != RegistrationRequestStatus.Pending)
+                throw new DomainException("This registration request has already been processed.");
+
+            bool exists = await context.Users.AnyAsync(u =>
+                u.Username.ToLower() == req.Username.ToLower() ||
+                u.Email.ToLower() == req.Email.ToLower(), ct);
+
+            if (exists)
+            {
+                context.RegistrationRequests.Remove(req);
+                await context.SaveChangesAsync(ct);
+                throw new DomainException("A user with this username or email already exists.");
+            }
+
+            var newUser = new User(
+                req.Username,
+                req.Email,
+                req.PasswordHash,
+                UserRole.Drinker,
+                req.WeightKg,
+                req.HeightCm,
+                req.Sex,
+                req.BirthYear,
+                VolumeUnit.Cl
+            );
+
+            req.Approve();
+            context.RegistrationRequests.Remove(req);
+            await context.Users.AddAsync(newUser, ct);
+            await context.SaveChangesAsync(ct);
+
+            return Results.Created($"/api/users/{newUser.Id}", MapToDto(newUser));
+        })
+        .RequireAuthorization("RequireAdmin");
+
+        // Admin: Reject / Delete Registration Request
+        group.MapDelete("/registration-requests/{id:guid}", async (
+            Guid id,
+            IApplicationDbContext context,
+            CancellationToken ct) =>
+        {
+            var req = await context.RegistrationRequests.FirstOrDefaultAsync(r => r.Id == id, ct)
+                ?? throw new NotFoundException(nameof(RegistrationRequest), id);
+
+            context.RegistrationRequests.Remove(req);
+            await context.SaveChangesAsync(ct);
+
+            return Results.NoContent();
         })
         .RequireAuthorization("RequireAdmin");
 
@@ -167,7 +288,6 @@ public class UsersEndpoints : IEndpoint
             }
 
             await context.SaveChangesAsync(ct);
-
             return Results.Ok(MapToDto(user));
         })
         .RequireAuthorization("RequireAdmin");
@@ -187,7 +307,6 @@ public class UsersEndpoints : IEndpoint
 
             context.Users.Remove(user);
             await context.SaveChangesAsync(ct);
-
             return Results.NoContent();
         })
         .RequireAuthorization("RequireAdmin");
