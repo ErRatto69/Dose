@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const base = import.meta.env.BASE_URL || 'https://dose-api-dev.home-ratti.duckdns.org/';
+const base = import.meta.env.BASE_URL || '/';
 const normalizedBase = base;
 
 export const axiosClient = axios.create({
