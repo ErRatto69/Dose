@@ -12,7 +12,6 @@ public class DatabaseSeeder(
     DoseDbContext context,
     IPasswordHasher passwordHasher,
     IDrinkStrengthCalculator strengthCalculator,
-    IConfiguration configuration,
     ILogger<DatabaseSeeder> logger)
 {
     public async Task SeedAsync(CancellationToken cancellationToken = default)

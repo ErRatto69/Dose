@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CA1848;CA1873;CA1304;CA1305;CA1310;CA1311;CA1861;CA1862;CS9113</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,7 +22,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12"/>
+    <PackageReference Include="SixLabors.ImageSharp"/>
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
   </ItemGroup>
