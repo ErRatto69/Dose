@@ -33,7 +33,7 @@ Directory.CreateDirectory(storageDrinksPath);
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(storageDrinksPath),
-    RequestPath = "/storage/drinks",
+    RequestPath = "/api/storage/drinks",
     OnPrepareResponse = ctx =>
     {
         ctx.Context.Response.Headers.Append("X-Content-Type-Options", "nosniff");

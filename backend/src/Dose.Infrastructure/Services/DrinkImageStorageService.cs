@@ -118,7 +118,7 @@ public class DrinkImageStorageService(
             await image.SaveAsync(targetFilePath, encoder, cancellationToken);
 
             // Return relative client URL
-            return $"/storage/drinks/{fileName}";
+            return $"/api/storage/drinks/{fileName}";
         }
         catch (Exception ex)
         {
