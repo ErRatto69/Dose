@@ -358,3 +358,16 @@ export interface CreateDrinkRequest {
     preparationSteps: string[];
     ingredients: CreateDrinkIngredientInput[];
 }
+
+export interface CocktailDbSyncStatus {
+    isRunning: boolean;
+    currentLetter: string;
+    processedDrinks: number;
+    newDrinksAdded: number;
+    existingDrinksUpdated: number;
+    imagesDownloaded: number;
+    failedImages: number;
+    lastError?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+}

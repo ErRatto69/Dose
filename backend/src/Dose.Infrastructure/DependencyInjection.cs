@@ -38,6 +38,16 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
 
+        // Image processing & External harvesting services
+        services.AddHttpClient("CocktailDbClient", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("DoseBarTracker/2.0 (Self-Hosted Cocktail App)");
+        });
+
+        services.AddSingleton<IDrinkImageStorageService, DrinkImageStorageService>();
+        services.AddSingleton<ICocktailDbSyncService, CocktailDbSyncService>();
+        
         // Seeder
         services.AddScoped<DatabaseSeeder>();
 

@@ -6,6 +6,7 @@ using Dose.Infrastructure;
 using Dose.Infrastructure.Persistence;
 using Dose.Infrastructure.Persistence.Seeding;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +26,20 @@ builder.Services.AddSecurityConfiguration(builder.Configuration);
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+string storageDrinksPath = Path.Combine(app.Environment.ContentRootPath, "storage", "drinks");
+Directory.CreateDirectory(storageDrinksPath);
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(storageDrinksPath),
+    RequestPath = "/storage/drinks",
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+        ctx.Context.Response.Headers.Append("Cache-Control", "public, max-age=31536000, immutable");
+    }
+});
 
 // 3. Automated Database Migration & Seeding on Startup
 using (var scope = app.Services.CreateScope())
