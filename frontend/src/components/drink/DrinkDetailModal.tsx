@@ -73,14 +73,14 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
     return (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-neutral-950/80 backdrop-blur-md">
             <div
-                className="w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-6 duration-200"
+                className="w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
                 role="dialog"
                 aria-modal="true"
             >
                 {/* Header */}
                 <div className="p-5 border-b border-neutral-800 flex items-start justify-between gap-4 bg-neutral-900">
                     <div>
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-1.5">
                             {drink.glassType && (
                                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-neutral-950 text-neutral-300 border border-neutral-800">
                                     {drink.glassType} Glass
@@ -122,7 +122,7 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
                     </div>
                     <div className="text-right">
                         <span className="text-neutral-400 block">Pure Ethanol</span>
-                        <strong className="text-white text-sm font-mono">
+                        <strong className="text-neutral-100 text-sm font-mono">
                             {drink.metrics.pureAlcoholGrams.toFixed(1)}g
                         </strong>
                     </div>
@@ -130,6 +130,7 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
 
                 {/* Scrollable Body */}
                 <div className="p-5 overflow-y-auto space-y-6 flex-1">
+                    {/* Sincronized Bottle Strength Meter */}
                     <BottleStrengthMeter
                         score1To10={drink.metrics.bottleScore1To10}
                         bottleRating={drink.metrics.bottleVisualRating}

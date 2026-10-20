@@ -7,12 +7,26 @@ interface BottleStrengthMeterProps {
     compact?: boolean;
 }
 
-const getStrengthDescriptor = (bottles: number): { label: string; color: string } => {
-    if (bottles <= 1.25) return { label: 'Light', color: 'text-emerald-400' };
-    if (bottles <= 2.25) return { label: 'Moderate', color: 'text-amber-400' };
-    if (bottles <= 3.25) return { label: 'Medium', color: 'text-orange-400' };
-    if (bottles <= 4.25) return { label: 'Strong', color: 'text-red-400' };
-    return { label: 'Very Strong', color: 'text-rose-500' };
+interface StrengthDescriptor {
+    label: string;
+    textColor: string;
+    fillHex: string;
+}
+
+const getStrengthDescriptor = (bottles: number): StrengthDescriptor => {
+    if (bottles <= 1.25) {
+        return { label: 'Light', textColor: 'text-emerald-400', fillHex: '#10b981' };
+    }
+    if (bottles <= 2.25) {
+        return { label: 'Moderate', textColor: 'text-amber-400', fillHex: '#f59e0b' };
+    }
+    if (bottles <= 3.25) {
+        return { label: 'Medium', textColor: 'text-orange-500', fillHex: '#f97316' };
+    }
+    if (bottles <= 4.25) {
+        return { label: 'Strong', textColor: 'text-red-500', fillHex: '#ef4444' };
+    }
+    return { label: 'Very Strong', textColor: 'text-purple-400', fillHex: '#a855f7' };
 };
 
 export const BottleStrengthMeter: React.FC<BottleStrengthMeterProps> = ({
@@ -27,14 +41,14 @@ export const BottleStrengthMeter: React.FC<BottleStrengthMeterProps> = ({
 
     return (
         <div
-            className={`bg-neutral-900/90 border border-neutral-800 rounded-2xl flex flex-col justify-between gap-2 ${
+            className={`bg-neutral-950 border border-neutral-800 rounded-2xl flex flex-col justify-between gap-2 ${
                 compact ? 'p-2.5' : 'p-3.5'
             }`}
         >
             <div className="flex items-center justify-between gap-3">
-                {/* 5 Physical Bottle Icons */}
+                {/* 5 Physical Bottle Icons - dynamically filled with the matching level color */}
                 <div
-                    className="flex items-center gap-1"
+                    className="flex items-center gap-1.5"
                     aria-label={`Strength: ${effectiveBottles} out of 5 bottles`}
                 >
                     {[1, 2, 3, 4, 5].map((bottleIndex) => {
@@ -59,19 +73,20 @@ export const BottleStrengthMeter: React.FC<BottleStrengthMeterProps> = ({
                                         />
                                     </clipPath>
                                 </defs>
-                                {/* Bottle Base Contour */}
+                                {/* Bottle Base Outline */}
                                 <path
                                     d="M9 2h6v6l4 6v30a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V14l4-6V2z"
-                                    className="fill-neutral-800 stroke-neutral-700"
+                                    className="fill-neutral-900 stroke-neutral-800"
                                     strokeWidth="1.5"
                                     strokeLinejoin="round"
                                 />
-                                {/* Dynamic Liquid Fill in Crimson Red */}
+                                {/* Dynamic Liquid Fill with the EXACT matching color */}
                                 {fillPercent > 0 && (
                                     <path
                                         clipPath={`url(#${clipId})`}
                                         d="M9 2h6v6l4 6v30a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V14l4-6V2z"
-                                        className="fill-red-600 transition-all duration-300 ease-out"
+                                        style={{ fill: descriptor.fillHex }}
+                                        className="transition-all duration-300 ease-out"
                                     />
                                 )}
                             </svg>
@@ -79,22 +94,21 @@ export const BottleStrengthMeter: React.FC<BottleStrengthMeterProps> = ({
                     })}
                 </div>
 
-                {/* Clear textual strength indicator */}
+                {/* Text descriptor using the exact same color */}
                 <div className="text-right">
-                    <div className="text-sm font-bold text-white flex items-center justify-end gap-1.5">
-                        <span className={descriptor.color}>{descriptor.label}</span>
+                    <div className="text-sm font-bold flex items-center justify-end gap-1.5">
+                        <span className={descriptor.textColor}>{descriptor.label}</span>
                         <span className="text-neutral-400 font-mono text-xs">
                             ({effectiveBottles}/5)
                         </span>
                     </div>
                     <div className="text-xs text-neutral-400 mt-0.5">
-                        <strong className="text-red-400 font-mono">{abvPercent.toFixed(1)}%</strong>{' '}
+                        <strong className="text-neutral-200 font-mono">{abvPercent.toFixed(1)}%</strong>{' '}
                         <span>ABV</span>
                     </div>
                 </div>
             </div>
 
-            {/* Explanatory helper note for clarity */}
             {!compact && (
                 <p className="text-[10px] text-neutral-500 border-t border-neutral-800/80 pt-1.5 leading-tight">
                     Strength rating based on alcohol percentage (% ABV) and total volume.

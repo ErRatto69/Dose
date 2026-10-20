@@ -19,11 +19,11 @@ interface SafetyConfig {
 }
 
 const SAFETY_COLORS: Record<BacSafetyLevel, SafetyConfig> = {
-    Sober: { stroke: '#94a3b8', bg: 'bg-slate-900/90', text: 'text-slate-300', label: 'Completely Sober' },
-    Safe: { stroke: '#10b981', bg: 'bg-emerald-950/40', text: 'text-emerald-400', label: 'Safe / Under Limit' },
-    Caution: { stroke: '#f59e0b', bg: 'bg-amber-950/40', text: 'text-amber-400', label: 'Driving Limit Exceeded' },
-    Warning: { stroke: '#f97316', bg: 'bg-orange-950/40', text: 'text-orange-400', label: 'Marked Impairment' },
-    Critical: { stroke: '#ef4444', bg: 'bg-rose-950/40', text: 'text-rose-400', label: 'Critical Risk' },
+    Sober: { stroke: '#71717a', bg: 'bg-neutral-900', text: 'text-neutral-300', label: 'Completely Sober' },
+    Safe: { stroke: '#10b981', bg: 'bg-neutral-900', text: 'text-emerald-400', label: 'Safe / Under Limit' },
+    Caution: { stroke: '#f59e0b', bg: 'bg-neutral-900', text: 'text-amber-400', label: 'Driving Limit Exceeded' },
+    Warning: { stroke: '#f97316', bg: 'bg-neutral-900', text: 'text-orange-400', label: 'Marked Impairment' },
+    Critical: { stroke: '#ef4444', bg: 'bg-neutral-900', text: 'text-red-400', label: 'Critical Risk' },
 };
 
 const NUMERIC_MAP: Record<string, BacSafetyLevel> = {
@@ -49,7 +49,6 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
     const config = SAFETY_COLORS[resolvedKey];
     const maxScale = 2.0;
     const progressRatio = Math.min(Math.max(bacGramsPerLiter / maxScale, 0), 1);
-
     const radius = 80;
     const circumference = Math.PI * radius;
     const strokeDashoffset = circumference * (1 - progressRatio);
@@ -61,18 +60,19 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
     };
 
     return (
-        <div
-            className={`w-full rounded-2xl border border-slate-800 p-6 backdrop-blur-sm ${config.bg} flex flex-col items-center shadow-xl`}
-        >
+        <div className="w-full rounded-3xl border border-neutral-800 bg-neutral-900 p-6 flex flex-col items-center shadow-xl">
+            {/* Circular Gauge Arc */}
             <div className="relative w-52 h-32 flex items-end justify-center overflow-hidden">
                 <svg viewBox="0 0 200 110" className="w-full h-full">
+                    {/* Dark neutral track background */}
                     <path
                         d="M 20 100 A 80 80 0 0 1 180 100"
                         fill="none"
-                        stroke="#1e293b"
+                        stroke="#262626"
                         strokeWidth="16"
                         strokeLinecap="round"
                     />
+                    {/* Dynamic color fill */}
                     <path
                         d="M 20 100 A 80 80 0 0 1 180 100"
                         fill="none"
@@ -86,40 +86,42 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
                 </svg>
 
                 <div className="absolute bottom-0 flex flex-col items-center">
-                    <span className="text-3xl font-black tracking-tight text-white">
+                    <span className="text-3xl font-black tracking-tight text-white font-mono">
                         {bacGramsPerLiter.toFixed(2)}
-                        <span className="text-sm font-semibold text-slate-400 ml-1">g/L</span>
+                        <span className="text-sm font-semibold text-neutral-400 ml-1 font-sans">g/L</span>
                     </span>
-                    <span className="text-xs text-slate-400 font-mono">
+                    <span className="text-xs text-neutral-400 font-mono">
                         {bacGramsPerDl.toFixed(3)} g/dL
                     </span>
                 </div>
             </div>
 
+            {/* Safety status pill */}
             <div
-                className={`mt-4 inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-bold ${config.text} bg-slate-900/90 border border-slate-700/60`}
+                className={`mt-4 inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-bold ${config.text} bg-neutral-950 border border-neutral-800 shadow-sm`}
             >
                 {(resolvedKey === 'Sober' || resolvedKey === 'Safe') && <CheckCircle className="w-3.5 h-3.5" />}
                 {resolvedKey === 'Caution' && <AlertTriangle className="w-3.5 h-3.5" />}
                 {(resolvedKey === 'Warning' || resolvedKey === 'Critical') && (
                     <ShieldAlert className="w-3.5 h-3.5" />
                 )}
-                {config.label}
+                <span>{config.label}</span>
             </div>
 
-            <p className="mt-3 text-center text-xs text-slate-300 leading-relaxed max-w-md font-medium">
+            <p className="mt-3 text-center text-xs text-neutral-300 leading-relaxed max-w-md font-medium">
                 {safetyMessage}
             </p>
 
-            <div className="mt-5 pt-3.5 border-t border-slate-800/80 w-full flex items-center justify-between text-xs text-slate-400">
+            {/* Footer metrics bar */}
+            <div className="mt-5 pt-3.5 border-t border-neutral-800/80 w-full flex items-center justify-between text-xs text-neutral-400">
                 <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-slate-500" />
+                    <Clock className="w-3.5 h-3.5 text-neutral-500" />
                     <span>Estimated sober:</span>
-                    <strong className="text-slate-200">{formatSoberTime(estimatedSoberAt)}</strong>
+                    <strong className="text-neutral-200">{formatSoberTime(estimatedSoberAt)}</strong>
                 </div>
                 <div>
                     <span>12h intake:</span>{' '}
-                    <strong className="text-amber-400">{totalAlcoholGramsLast12h.toFixed(1)}g</strong>
+                    <strong className="text-red-400 font-mono">{totalAlcoholGramsLast12h.toFixed(1)}g</strong>
                 </div>
             </div>
         </div>
