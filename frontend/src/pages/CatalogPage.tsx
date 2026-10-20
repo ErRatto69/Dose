@@ -1,21 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { drinksApi } from '@/api/drinks.api';
+import { syncApi } from '@/api/sync.api';
 import { useDoseModalStore } from '@/store/useDoseModalStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { GlobalSearch } from '@/components/common/GlobalSearch';
-import { BottleStrengthMeter } from '@/components/drink/BottleStrengthMeter';
 import { DoseCustomizerModal } from '@/components/drink/DoseCustomizerModal';
 import { DrinkDetailModal } from '@/components/drink/DrinkDetailModal';
 import { QuickCustomDrinkModal } from '@/components/drink/QuickCustomDrinkModal';
 import { CreateDrinkModal } from '@/components/drink/CreateDrinkModal';
 import { CreateIngredientModal } from '@/components/drink/CreateIngredientModal';
+import { CocktailDbSyncModal } from '@/components/admin/CocktailDbSyncModal';
 import { PaginationControls } from '@/components/common/PaginationControls';
+import { DrinkCard } from '@/components/drink/DrinkCard';
 import type { DrinkDetail } from '@/types';
-import { Plus, Star, Sparkles, Eye, Zap, Wine, Loader2 } from 'lucide-react';
+import {
+    Plus,
+    Sparkles,
+    Zap,
+    Wine,
+    Loader2,
+    RefreshCw,
+} from 'lucide-react';
+
+const BASE_SPIRITS = [
+    { label: 'All', query: '' },
+    { label: 'Vodka', query: 'vodka' },
+    { label: 'Gin', query: 'gin' },
+    { label: 'Rum', query: 'rum' },
+    { label: 'Tequila', query: 'tequila' },
+    { label: 'Whiskey', query: 'whiskey' },
+    { label: 'Cognac', query: 'cognac' },
+    { label: 'Wine & Spritz', query: 'spritz' },
+];
 
 export const CatalogPage: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedSpirit, setSelectedSpirit] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [pageNumber, setPageNumber] = useState(1);
     const pageSize = 12;
@@ -27,24 +48,31 @@ export const CatalogPage: React.FC = () => {
     const [isQuickPourOpen, setIsQuickPourOpen] = useState(false);
     const [isCreateDrinkOpen, setIsCreateDrinkOpen] = useState(false);
     const [isCreateIngredientOpen, setIsCreateIngredientOpen] = useState(false);
+    const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
     const { openModal } = useDoseModalStore();
     const { user } = useAuthStore();
 
-    const canManageCatalog =
-        user?.role === 'Admin' ||
-        user?.role === 'Bartender' ||
-        String(user?.role) === '0' ||
-        String(user?.role) === '1';
+    const isAdmin = user?.role === 'Admin' || String(user?.role) === '0';
+    const canManageCatalog = isAdmin || user?.role === 'Bartender' || String(user?.role) === '1';
 
-    // Debounce search query to prevent excessive server requests
+    // Debounce search query
     useEffect(() => {
         const timer = setTimeout(() => {
-            setDebouncedSearch(searchQuery);
+            const effectiveQuery = searchQuery.trim() || selectedSpirit;
+            setDebouncedSearch(effectiveQuery);
             setPageNumber(1);
         }, 300);
         return () => clearTimeout(timer);
-    }, [searchQuery]);
+    }, [searchQuery, selectedSpirit]);
+
+    // Check if background sync is actively running for header indicator
+    const { data: syncStatus } = useQuery({
+        queryKey: ['cocktaildb-sync-status'],
+        queryFn: syncApi.getCocktailDbSyncStatus,
+        refetchInterval: (query) => (query.state.data?.isRunning ? 2000 : 15000),
+        enabled: isAdmin,
+    });
 
     const { data: pagedDrinks, isLoading, refetch } = useQuery({
         queryKey: ['drinks-catalog', pageNumber, debouncedSearch],
@@ -76,13 +104,13 @@ export const CatalogPage: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Header & Quick Action Bar */}
+            {/* Header Control Panel */}
             <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xl">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl sm:text-3xl font-black text-white">Cocktail Catalog</h1>
                         <p className="text-xs text-neutral-400 mt-1">
-                            Browse recipes, check alcohol strength, or record custom doses.
+                            Curated cocktail recipes, ABV calculations, and custom pouring.
                         </p>
                     </div>
 
@@ -95,6 +123,23 @@ export const CatalogPage: React.FC = () => {
                             <Zap className="w-4 h-4 fill-white" />
                             <span>Quick Pour</span>
                         </button>
+
+                        {/* Admin Sync Button */}
+                        {isAdmin && (
+                            <button
+                                type="button"
+                                onClick={() => setIsSyncModalOpen(true)}
+                                className={`px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all ${
+                                    syncStatus?.isRunning
+                                        ? 'bg-red-600/20 border-red-600 text-red-300'
+                                        : 'bg-neutral-950 hover:bg-neutral-800 border-neutral-800 text-neutral-200'
+                                }`}
+                                title="Harvest cocktails from TheCocktailDB"
+                            >
+                                <RefreshCw className={`w-3.5 h-3.5 ${syncStatus?.isRunning ? 'animate-spin text-red-500' : 'text-neutral-400'}`} />
+                                <span>{syncStatus?.isRunning ? 'Syncing...' : 'Sync TheCocktailDB'}</span>
+                            </button>
+                        )}
 
                         {canManageCatalog && (
                             <>
@@ -119,100 +164,55 @@ export const CatalogPage: React.FC = () => {
                     </div>
                 </div>
 
-                <GlobalSearch value={searchQuery} onChange={setSearchQuery} />
+                {/* Instant Search Bar */}
+                <GlobalSearch value={searchQuery} onChange={(v) => { setSearchQuery(v); if (v) setSelectedSpirit(''); }} />
+
+                {/* Quick Spirit Tabs */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar">
+                    {BASE_SPIRITS.map((tab) => {
+                        const isSelected = selectedSpirit === tab.query && !searchQuery;
+                        return (
+                            <button
+                                key={tab.label}
+                                type="button"
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    setSelectedSpirit(tab.query);
+                                }}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
+                                    isSelected
+                                        ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
+                                        : 'bg-neutral-950 text-neutral-400 hover:text-neutral-200 border border-neutral-800'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* Loading State */}
             {isLoading && (
                 <div className="py-24 flex flex-col items-center justify-center text-neutral-500 gap-2">
                     <Loader2 className="w-8 h-8 animate-spin text-red-600" />
-                    <span className="text-xs">Loading drinks...</span>
+                    <span className="text-xs">Loading craft catalog...</span>
                 </div>
             )}
 
-            {/* Cocktail Grid */}
+            {/* Dark Editorial Cocktail Grid */}
             {!isLoading && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {drinks.map((drink) => {
-                        const isViewing =
-                            loadingAction?.id === drink.id && loadingAction.mode === 'view';
-                        const isDrinking =
-                            loadingAction?.id === drink.id && loadingAction.mode === 'drink';
-
-                        return (
-                            <div
-                                key={drink.id}
-                                onClick={() => handleAction(drink.id, 'view')}
-                                className="cursor-pointer p-5 rounded-3xl bg-neutral-900 border border-neutral-800 hover:border-red-600/50 transition-all flex flex-col justify-between gap-4 shadow-md group"
-                            >
-                                <div className="space-y-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <h3 className="text-lg font-bold text-white group-hover:text-red-400 transition-colors leading-tight truncate">
-                                                    {drink.name}
-                                                </h3>
-                                                {drink.glassType && (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-neutral-950 border border-neutral-800 text-neutral-400">
-                                                        {drink.glassType}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-xs text-neutral-400 line-clamp-2 mt-1.5 leading-relaxed">
-                                                {drink.description}
-                                            </p>
-                                        </div>
-
-                                        {drink.averageRating > 0 && (
-                                            <div className="flex items-center gap-1 text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded-lg shrink-0">
-                                                <Star className="w-3.5 h-3.5 fill-amber-400" />
-                                                <span>{drink.averageRating}</span>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <BottleStrengthMeter
-                                        score1To10={drink.bottleScore1To10}
-                                        abvPercent={drink.abvPercent}
-                                        compact
-                                    />
-                                </div>
-
-                                <div
-                                    className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-800/80"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    <button
-                                        type="button"
-                                        onClick={() => handleAction(drink.id, 'view')}
-                                        disabled={isViewing || isDrinking}
-                                        className="py-2.5 px-3 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
-                                    >
-                                        {isViewing ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Eye className="w-4 h-4" />
-                                        )}
-                                        <span>View Recipe</span>
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => handleAction(drink.id, 'drink')}
-                                        disabled={isViewing || isDrinking}
-                                        className="py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-md shadow-red-600/20"
-                                    >
-                                        {isDrinking ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Plus className="w-4 h-4 stroke-[2.5]" />
-                                        )}
-                                        <span>Drink Now</span>
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    })}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                    {drinks.map((drink) => (
+                        <DrinkCard
+                            key={drink.id}
+                            drink={drink}
+                            onView={(id) => handleAction(id, 'view')}
+                            onDrink={(id) => handleAction(id, 'drink')}
+                            isViewing={loadingAction?.id === drink.id && loadingAction.mode === 'view'}
+                            isDrinking={loadingAction?.id === drink.id && loadingAction.mode === 'drink'}
+                        />
+                    ))}
                 </div>
             )}
 
@@ -256,6 +256,13 @@ export const CatalogPage: React.FC = () => {
             <CreateIngredientModal
                 isOpen={isCreateIngredientOpen}
                 onClose={() => setIsCreateIngredientOpen(false)}
+            />
+            <CocktailDbSyncModal
+                isOpen={isSyncModalOpen}
+                onClose={() => {
+                    setIsSyncModalOpen(false);
+                    refetch();
+                }}
             />
         </div>
     );

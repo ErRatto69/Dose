@@ -54,10 +54,14 @@ export default defineConfig({
     port: 5155,
     proxy: {
       '/api': {
-        target: 'https://dose-api-dev.home-ratti.duckdns.org',
+        target: 'http://localhost:5159',
         changeOrigin: true,
         secure: false
-      }
+      },
+      '/storage': {
+        target: 'http://localhost:5159',
+        changeOrigin: true,
+      },
     }
   }
 });
