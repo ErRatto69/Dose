@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '@/api/users.api';
 import { drinksApi } from '@/api/drinks.api';
@@ -9,7 +10,6 @@ import { BacGaugeCard } from '@/components/safety/BacGaugeCard';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import type { BiologicalSex } from '@/types';
 import {
-    UserCircle,
     Save,
     CheckCircle2,
     AlertCircle,
@@ -17,10 +17,14 @@ import {
     MessageSquare,
     Star,
     Trash2,
+    LogOut,
+    Sliders,
+    X,
 } from 'lucide-react';
 
 export const ProfilePage: React.FC = () => {
-    const { user, updateUser } = useAuthStore();
+    const navigate = useNavigate();
+    const { user, updateUser, logout } = useAuthStore();
     const { preferredUnit, setUnit } = usePreferencesStore();
     const queryClient = useQueryClient();
 
@@ -33,6 +37,7 @@ export const ProfilePage: React.FC = () => {
     const [savedSuccess, setSavedSuccess] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [reviewsPage, setReviewsPage] = useState(1);
+    const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
     const { data: freshProfile } = useQuery({
         queryKey: ['my-profile'],
@@ -92,159 +97,203 @@ export const ProfilePage: React.FC = () => {
         },
     });
 
+    const handleConfirmLogout = () => {
+        queryClient.clear();
+        logout();
+        navigate('/login');
+    };
+
+    const userInitial = user?.username ? user.username.charAt(0).toUpperCase() : 'U';
+
     return (
         <div className="space-y-6">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 shadow-xl">
-                <h1 className="text-2xl sm:text-3xl font-black text-white">Profile &amp; Settings</h1>
-                <p className="text-xs text-neutral-400 mt-0.5">
-                    Manage biometrics for BAC calculations and review tasting notes.
-                </p>
-            </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Left: Biometrics Form */}
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        updateMutation.mutate();
-                    }}
-                    className="lg:col-span-7 p-6 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-5 shadow-xl"
-                >
-                    <div className="flex items-center gap-3 pb-4 border-b border-neutral-800">
-                        <div className="w-12 h-12 rounded-2xl bg-red-600/15 border border-red-600/40 flex items-center justify-center text-red-500">
-                            <UserCircle className="w-7 h-7" />
+                {/* Left Column: Profile, Biometrics & Preferences */}
+                <div className="lg:col-span-7 space-y-6">
+                    {/* User Card with Inline Sign Out */}
+                    <div className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 shadow-xl flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3.5">
+                            <div className="w-12 h-12 rounded-2xl bg-neutral-950 border border-red-600/40 flex items-center justify-center text-lg font-black text-red-500 shadow-inner">
+                                {userInitial}
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-bold text-white leading-tight flex items-center gap-2">
+                                    <span>{user?.username}</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-600/15 border border-red-600/30 text-red-400 font-semibold uppercase tracking-wider">
+                                        {user?.role}
+                                    </span>
+                                </h1>
+                                <p className="text-xs text-neutral-400 mt-0.5">{user?.email}</p>
+                            </div>
                         </div>
-                        <div>
-                            <h2 className="text-lg font-bold text-white">{user?.username}</h2>
-                            <p className="text-xs text-neutral-400">
-                                {user?.email} • <span className="text-red-500 font-semibold">{user?.role}</span>
-                            </p>
-                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => setIsLogoutModalOpen(true)}
+                            className="px-3.5 py-2 rounded-xl bg-neutral-950 hover:bg-red-950/40 border border-neutral-800 hover:border-red-600/40 text-neutral-400 hover:text-red-400 text-xs font-bold flex items-center gap-1.5 transition-all"
+                            title="Sign out of your account"
+                        >
+                            <LogOut className="w-3.5 h-3.5" />
+                            <span>Sign Out</span>
+                        </button>
                     </div>
 
-                    {errorMsg && (
-                        <div className="p-3 rounded-xl bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                            <span>{errorMsg}</span>
+                    {/* Biometrics & Unit Settings Form */}
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            updateMutation.mutate();
+                        }}
+                        className="p-6 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-5 shadow-xl"
+                    >
+                        <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+                            <div>
+                                <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                                    Biometrics &amp; Units
+                                </h2>
+                                <p className="text-xs text-neutral-400 mt-0.5">
+                                    Used for BAC metabolic rate calculations and recipe volume display.
+                                </p>
+                            </div>
                         </div>
-                    )}
 
-                    {savedSuccess && (
-                        <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-800 text-emerald-300 text-xs flex items-center gap-2">
-                            <CheckCircle2 className="w-4 h-4 shrink-0" />
-                            <span>Biometrics updated successfully!</span>
-                        </div>
-                    )}
+                        {errorMsg && (
+                            <div className="p-3 rounded-xl bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                                <span>{errorMsg}</span>
+                            </div>
+                        )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
-                                Weight (kg)
-                            </label>
-                            <input
-                                type="number"
-                                step="0.5"
-                                min="30"
-                                max="250"
-                                required
-                                value={weightKg}
-                                onChange={(e) => setWeightKg(e.target.value)}
-                                className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-red-600"
-                            />
+                        {savedSuccess && (
+                            <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-800 text-emerald-300 text-xs flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                                <span>Settings saved successfully!</span>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
+                                    Weight (kg)
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.5"
+                                    min="30"
+                                    max="250"
+                                    required
+                                    value={weightKg}
+                                    onChange={(e) => setWeightKg(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-red-600"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
+                                    Height (cm)
+                                </label>
+                                <input
+                                    type="number"
+                                    step="1"
+                                    min="100"
+                                    max="230"
+                                    required
+                                    value={heightCm}
+                                    onChange={(e) => setHeightCm(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-red-600"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
+                                    Biological Sex
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {(['Male', 'Female'] as BiologicalSex[]).map((option) => (
+                                        <button
+                                            key={option}
+                                            type="button"
+                                            onClick={() => setSex(option)}
+                                            className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                                                sex === option
+                                                    ? 'bg-red-600/20 border-red-600 text-red-300'
+                                                    : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                                            }`}
+                                        >
+                                            {option}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
+                                    Birth Year
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1920"
+                                    max="2010"
+                                    value={birthYear}
+                                    onChange={(e) => setBirthYear(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-red-600"
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
-                                Height (cm)
-                            </label>
-                            <input
-                                type="number"
-                                step="1"
-                                min="100"
-                                max="230"
-                                required
-                                value={heightCm}
-                                onChange={(e) => setHeightCm(e.target.value)}
-                                className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-red-600"
-                            />
-                        </div>
-                        <div>
-                            <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
-                                Biological Sex
-                            </label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {(['Male', 'Female'] as BiologicalSex[]).map((option) => (
+
+                        {/* Integrated Segmented Volume Unit Control */}
+                        <div className="pt-2 border-t border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <span className="text-xs font-semibold text-neutral-200 flex items-center gap-1.5">
+                                    <Sliders className="w-3.5 h-3.5 text-red-500" />
+                                    Volume Unit
+                                </span>
+                                <span className="text-[11px] text-neutral-500 block">
+                                    Catalog recipes &amp; pour amounts
+                                </span>
+                            </div>
+
+                            <div className="inline-flex p-1 bg-neutral-950 border border-neutral-800 rounded-xl self-start sm:self-auto">
+                                {(
+                                    [
+                                        { unit: 'cl', label: 'cl' },
+                                        { unit: 'oz', label: 'oz' },
+                                    ] as const
+                                ).map(({ unit, label }) => (
                                     <button
-                                        key={option}
+                                        key={unit}
                                         type="button"
-                                        onClick={() => setSex(option)}
-                                        className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                                            sex === option
-                                                ? 'bg-red-600/20 border-red-600 text-red-300'
-                                                : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                                        onClick={() => setUnit(unit)}
+                                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                            preferredUnit === unit
+                                                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
+                                                : 'text-neutral-400 hover:text-neutral-200'
                                         }`}
                                     >
-                                        {option}
+                                        {label}
                                     </button>
                                 ))}
                             </div>
                         </div>
-                        <div>
-                            <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
-                                Birth Year
-                            </label>
-                            <input
-                                type="number"
-                                min="1920"
-                                max="2010"
-                                value={birthYear}
-                                onChange={(e) => setBirthYear(e.target.value)}
-                                className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-red-600"
-                            />
-                        </div>
-                    </div>
 
-                    <div>
-                        <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
-                            Volume Unit
-                        </label>
-                        <div className="grid grid-cols-2 gap-2 max-w-xs">
-                            {(['cl', 'oz'] as const).map((u) => (
-                                <button
-                                    key={u}
-                                    type="button"
-                                    onClick={() => setUnit(u)}
-                                    className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                                        preferredUnit === u
-                                            ? 'bg-red-600/20 border-red-600 text-red-300'
-                                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
-                                    }`}
-                                >
-                                    {u === 'cl' ? 'Centiliters (cl)' : 'Fluid Ounces (oz)'}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                        <button
+                            type="submit"
+                            disabled={updateMutation.isPending}
+                            className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/25 transition-all active:scale-[0.99]"
+                        >
+                            {updateMutation.isPending ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>Saving...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="w-4 h-4" />
+                                    <span>Save Settings</span>
+                                </>
+                            )}
+                        </button>
+                    </form>
+                </div>
 
-                    <button
-                        type="submit"
-                        disabled={updateMutation.isPending}
-                        className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/25 transition-all"
-                    >
-                        {updateMutation.isPending ? (
-                            <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                <Save className="w-4 h-4" />
-                                Save Profile Settings
-                            </>
-                        )}
-                    </button>
-                </form>
-
-                {/* Right: BAC Gauge Preview */}
+                {/* Right Column: BAC Gauge Card */}
                 <div className="lg:col-span-5 space-y-4">
                     {bacData && (
                         <BacGaugeCard
@@ -328,6 +377,56 @@ export const ProfilePage: React.FC = () => {
                     </p>
                 )}
             </div>
+
+            {/* Compact Logout Confirmation Dialog */}
+            {isLogoutModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md">
+                    <div
+                        className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-4"
+                        role="dialog"
+                        aria-modal="true"
+                    >
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-red-600/15 border border-red-600/30 flex items-center justify-center text-red-500">
+                                <LogOut className="w-5 h-5" />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsLogoutModalOpen(false)}
+                                className="p-1.5 text-neutral-400 hover:text-white rounded-full bg-neutral-800 transition-colors"
+                                aria-label="Close dialog"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div>
+                            <h3 className="text-base font-bold text-white">Sign out of Dose?</h3>
+                            <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                                You will need your credentials to log back in and track drinks.
+                            </p>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+                            <button
+                                type="button"
+                                onClick={() => setIsLogoutModalOpen(false)}
+                                className="px-3.5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 text-xs font-bold transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmLogout}
+                                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-red-600/30 transition-all active:scale-95"
+                            >
+                                <LogOut className="w-3.5 h-3.5" />
+                                <span>Sign Out</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

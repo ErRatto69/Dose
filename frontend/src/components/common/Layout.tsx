@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuthStore } from '@/store/useAuthStore';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { bacApi } from '@/api/bac.api';
 import { usersApi } from '@/api/users.api';
-import { UnitTogglePill } from './UnitTogglePill';
 import { SafetyBanner } from '@/components/safety/SafetyBanner';
 import { QuickCustomDrinkModal } from '@/components/drink/QuickCustomDrinkModal';
 import {
@@ -15,20 +14,17 @@ import {
     ShieldCheck,
     Users,
     UserCircle,
-    LogOut,
     Zap,
     MessageSquare,
 } from 'lucide-react';
 
 export const Layout: React.FC = () => {
-    const { user, logout } = useAuthStore();
-    const queryClient = useQueryClient();
+    const { user } = useAuthStore();
     const [isQuickPourOpen, setIsQuickPourOpen] = useState(false);
     const [iconError, setIconError] = useState(false);
 
     const appIconUrl = `${import.meta.env.BASE_URL}icons/icon-192.png`;
 
-    // Verify active session status periodically so disabled users are logged out immediately
     useQuery({
         queryKey: ['session-check', user?.id],
         queryFn: usersApi.getMe,
@@ -42,11 +38,6 @@ export const Layout: React.FC = () => {
         refetchInterval: 30000,
         enabled: !!user,
     });
-
-    const handleLogout = () => {
-        queryClient.clear();
-        logout();
-    };
 
     const isAdmin = user?.role === 'Admin' || String(user?.role) === '0';
 
@@ -65,12 +56,14 @@ export const Layout: React.FC = () => {
             : []),
     ];
 
+    const userInitial = user?.username ? user.username.charAt(0).toUpperCase() : 'U';
+
     return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col">
             {/* TopBar */}
             <header className="fixed top-0 left-0 right-0 z-40 h-16 bg-neutral-950/95 border-b border-neutral-800/90 backdrop-blur-md">
-                <div className="max-w-7xl mx-auto h-full px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-2">
-                    {/* Brand Logo (App Icon + Dose without subtitle) */}
+                <div className="max-w-7xl mx-auto h-full px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-3">
+                    {/* Brand Logo */}
                     <NavLink to="/drinks" className="flex items-center gap-2.5 shrink-0">
                         {!iconError ? (
                             <img
@@ -110,7 +103,7 @@ export const Layout: React.FC = () => {
                         ))}
                     </nav>
 
-                    {/* Right Controls: High-Visibility Quick Pour on both Mobile & Desktop */}
+                    {/* Right Controls: Quick Pour + User Pill */}
                     <div className="flex items-center gap-2 shrink-0">
                         <button
                             type="button"
@@ -121,30 +114,24 @@ export const Layout: React.FC = () => {
                             <span>Quick Pour</span>
                         </button>
 
-                        <UnitTogglePill />
-
                         {user && (
-                            <div className="flex items-center gap-2 pl-1.5 border-l border-neutral-800">
-                                <NavLink
-                                    to="/profile"
-                                    className="hidden sm:flex flex-col text-right hover:opacity-80 transition-opacity"
-                                >
-                                    <span className="text-xs font-bold text-neutral-200 leading-tight">
+                            <NavLink
+                                to="/profile"
+                                className="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 transition-all group"
+                                title="View Profile & Settings"
+                            >
+                                <div className="w-7 h-7 rounded-lg bg-neutral-950 border border-red-600/40 flex items-center justify-center text-xs font-black text-red-400 group-hover:border-red-500 transition-colors">
+                                    {userInitial}
+                                </div>
+                                <div className="hidden sm:flex flex-col text-left">
+                                    <span className="text-xs font-bold text-neutral-200 group-hover:text-white leading-tight">
                                         {user.username}
                                     </span>
-                                    <span className="text-[10px] text-red-500 font-semibold">
+                                    <span className="text-[10px] text-neutral-400 font-medium">
                                         {isAdmin ? 'Admin' : user.role}
                                     </span>
-                                </NavLink>
-                                <button
-                                    type="button"
-                                    onClick={handleLogout}
-                                    className="p-2 rounded-xl text-neutral-400 hover:text-red-400 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 transition-colors"
-                                    title="Sign out"
-                                >
-                                    <LogOut className="w-4 h-4" />
-                                </button>
-                            </div>
+                                </div>
+                            </NavLink>
                         )}
                     </div>
                 </div>

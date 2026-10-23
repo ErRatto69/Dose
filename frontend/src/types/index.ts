@@ -355,6 +355,7 @@ export interface CreateDrinkRequest {
     name: string;
     description: string;
     glassType?: string;
+    imageUrl?: string;
     preparationSteps: string[];
     ingredients: CreateDrinkIngredientInput[];
 }

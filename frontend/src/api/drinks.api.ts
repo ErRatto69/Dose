@@ -105,4 +105,12 @@ export const drinksApi = {
         });
         return data;
     },
+    uploadDrinkImage: async (file: File): Promise<{ imageUrl: string }> => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const { data } = await axiosClient.post<{ imageUrl: string }>('/drinks/upload-image', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return data;
+    },
 };

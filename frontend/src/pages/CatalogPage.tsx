@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { drinksApi } from '@/api/drinks.api';
 import { syncApi } from '@/api/sync.api';
 import { useDoseModalStore } from '@/store/useDoseModalStore';
@@ -11,7 +11,6 @@ import { QuickCustomDrinkModal } from '@/components/drink/QuickCustomDrinkModal'
 import { CreateDrinkModal } from '@/components/drink/CreateDrinkModal';
 import { CreateIngredientModal } from '@/components/drink/CreateIngredientModal';
 import { CocktailDbSyncModal } from '@/components/admin/CocktailDbSyncModal';
-import { PaginationControls } from '@/components/common/PaginationControls';
 import { DrinkCard } from '@/components/drink/DrinkCard';
 import type { DrinkDetail } from '@/types';
 import {
@@ -38,7 +37,6 @@ export const CatalogPage: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedSpirit, setSelectedSpirit] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
-    const [pageNumber, setPageNumber] = useState(1);
     const pageSize = 12;
 
     const [loadingAction, setLoadingAction] = useState<{ id: string; mode: 'view' | 'drink' } | null>(
@@ -50,23 +48,24 @@ export const CatalogPage: React.FC = () => {
     const [isCreateIngredientOpen, setIsCreateIngredientOpen] = useState(false);
     const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
+    const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
     const { openModal } = useDoseModalStore();
     const { user } = useAuthStore();
 
     const isAdmin = user?.role === 'Admin' || String(user?.role) === '0';
     const canManageCatalog = isAdmin || user?.role === 'Bartender' || String(user?.role) === '1';
 
-    // Debounce search query
+    // Debounce search query & spirit filters
     useEffect(() => {
         const timer = setTimeout(() => {
             const effectiveQuery = searchQuery.trim() || selectedSpirit;
             setDebouncedSearch(effectiveQuery);
-            setPageNumber(1);
         }, 300);
         return () => clearTimeout(timer);
     }, [searchQuery, selectedSpirit]);
 
-    // Check if background sync is actively running for header indicator
+    // Check if background sync is actively running
     const { data: syncStatus } = useQuery({
         queryKey: ['cocktaildb-sync-status'],
         queryFn: syncApi.getCocktailDbSyncStatus,
@@ -74,17 +73,49 @@ export const CatalogPage: React.FC = () => {
         enabled: isAdmin,
     });
 
-    const { data: pagedDrinks, isLoading, refetch } = useQuery({
-        queryKey: ['drinks-catalog', pageNumber, debouncedSearch],
-        queryFn: () =>
+    // Infinite Query for Drinks
+    const {
+        data: pagedDrinksData,
+        isLoading,
+        isFetchingNextPage,
+        hasNextPage,
+        fetchNextPage,
+        refetch,
+    } = useInfiniteQuery({
+        queryKey: ['drinks-catalog-infinite', debouncedSearch],
+        queryFn: ({ pageParam = 1 }) =>
             drinksApi.getCatalog({
-                pageNumber,
+                pageNumber: Number(pageParam),
                 pageSize,
                 search: debouncedSearch.trim() || undefined,
             }),
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) =>
+            lastPage.hasNextPage ? lastPage.pageNumber + 1 : undefined,
     });
 
-    const drinks = pagedDrinks?.items ?? [];
+    // Flatten pages into a continuous array of drinks
+    const drinks = pagedDrinksData?.pages.flatMap((page) => page.items) ?? [];
+    const totalCount = pagedDrinksData?.pages[0]?.totalCount ?? drinks.length;
+
+    // IntersectionObserver for TikTok-style infinite scroll
+    useEffect(() => {
+        const sentinel = loadMoreRef.current;
+        if (!sentinel) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const first = entries[0];
+                if (first.isIntersecting && hasNextPage && !isFetchingNextPage) {
+                    fetchNextPage();
+                }
+            },
+            { rootMargin: '350px' }
+        );
+
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
     const handleAction = async (drinkId: string, mode: 'view' | 'drink') => {
         try {
@@ -192,7 +223,7 @@ export const CatalogPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Loading State */}
+            {/* Initial Loading State */}
             {isLoading && (
                 <div className="py-24 flex flex-col items-center justify-center text-neutral-500 gap-2">
                     <Loader2 className="w-8 h-8 animate-spin text-red-600" />
@@ -224,17 +255,24 @@ export const CatalogPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Pagination Controls */}
-            {pagedDrinks && (
-                <PaginationControls
-                    pageNumber={pagedDrinks.pageNumber}
-                    totalPages={pagedDrinks.totalPages}
-                    totalCount={pagedDrinks.totalCount}
-                    hasPreviousPage={pagedDrinks.hasPreviousPage}
-                    hasNextPage={pagedDrinks.hasNextPage}
-                    onPageChange={(page) => setPageNumber(page)}
-                    itemLabel="cocktails"
-                />
+            {/* Invisible Sentinel triggering next page fetch */}
+            <div ref={loadMoreRef} className="h-4 w-full pointer-events-none" />
+
+            {/* Fetching Next Page Spinner */}
+            {isFetchingNextPage && (
+                <div className="py-6 flex items-center justify-center gap-2 text-neutral-400 text-xs">
+                    <Loader2 className="w-4 h-4 animate-spin text-red-600" />
+                    <span>Loading more craft cocktails...</span>
+                </div>
+            )}
+
+            {/* End of Catalog Indicator */}
+            {!isLoading && !hasNextPage && drinks.length > 0 && (
+                <div className="py-10 text-center text-xs text-neutral-500 flex items-center justify-center gap-3">
+                    <div className="h-px bg-neutral-800/80 w-16 sm:w-28" />
+                    <span>You&apos;ve reached the end of the catalog ({totalCount} cocktails)</span>
+                    <div className="h-px bg-neutral-800/80 w-16 sm:w-28" />
+                </div>
             )}
 
             {/* Modals */}
