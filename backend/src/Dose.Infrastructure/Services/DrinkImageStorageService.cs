@@ -32,7 +32,7 @@ public class DrinkImageStorageService(
             return null;
         }
 
-        // 2. SSRF Mitigation: Prevent loopback/private subnet probing
+        // 2. SSRF Mitigation: Loopback & private network check
         try
         {
             var hostEntry = await Dns.GetHostEntryAsync(uri.Host, cancellationToken);
@@ -51,7 +51,7 @@ public class DrinkImageStorageService(
             return null;
         }
 
-        // 3. Download image stream with size guard
+        // 3. Download stream
         var client = httpClientFactory.CreateClient("CocktailDbClient");
         using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -67,29 +67,45 @@ public class DrinkImageStorageService(
         }
 
         await using var rawStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await ProcessAndPersistImageStreamAsync(rawStream, response.Content.Headers.ContentLength ?? 0, cancellationToken);
+    }
+
+    public async Task<string?> SaveAndSanitizeUploadedImageAsync(Stream fileStream, long contentLength, CancellationToken cancellationToken = default)
+    {
+        return await ProcessAndPersistImageStreamAsync(fileStream, contentLength, cancellationToken);
+    }
+
+    private async Task<string?> ProcessAndPersistImageStreamAsync(Stream stream, long declaredLength, CancellationToken cancellationToken)
+    {
+        if (declaredLength > MaxAllowedFileSizeBytes)
+        {
+            logger.LogWarning("Stream declared length exceeds 5MB: {Length} bytes", declaredLength);
+            return null;
+        }
+
         using var memoryStream = new MemoryStream();
-        await rawStream.CopyToAsync(memoryStream, cancellationToken);
+        await stream.CopyToAsync(memoryStream, cancellationToken);
 
         if (memoryStream.Length > MaxAllowedFileSizeBytes || memoryStream.Length < 16)
         {
-            logger.LogWarning("Downloaded payload size invalid ({Bytes} bytes)", memoryStream.Length);
+            logger.LogWarning("Payload size invalid ({Bytes} bytes)", memoryStream.Length);
             return null;
         }
 
         memoryStream.Position = 0;
 
-        // 4. Validate Magic Bytes
+        // Magic Bytes Validation
         byte[] header = new byte[12];
         _ = await memoryStream.ReadAsync(header.AsMemory(0, 12), cancellationToken);
         memoryStream.Position = 0;
 
         if (!IsValidImageHeader(header))
         {
-            logger.LogWarning("Magic bytes mismatch for image from {Url}", sourceUrl);
+            logger.LogWarning("Magic bytes mismatch for incoming image stream");
             return null;
         }
 
-        // 5. Decode, Strip Metadata & Re-encode into WebP using ImageSharp
+        // Decode, resize 800x800, strip metadata and re-encode to pure WebP
         string fileName = $"{Guid.NewGuid():N}.webp";
         string storageDir = Path.Combine(environment.ContentRootPath, "storage", "drinks");
         Directory.CreateDirectory(storageDir);
@@ -100,15 +116,13 @@ public class DrinkImageStorageService(
         {
             using var image = await Image.LoadAsync(memoryStream, cancellationToken);
 
-            image.Mutate(ctx => ctx
-                .Resize(new ResizeOptions
-                {
-                    Size = new Size(800, 800),
-                    Mode = ResizeMode.Crop,
-                    Position = AnchorPositionMode.Center
-                }));
+            image.Mutate(ctx => ctx.Resize(new ResizeOptions
+            {
+                Size = new Size(800, 800),
+                Mode = ResizeMode.Crop,
+                Position = AnchorPositionMode.Center
+            }));
 
-            // Strip metadata by creating a pure WebP encoder without EXIF
             var encoder = new WebpEncoder
             {
                 Quality = 80,
@@ -117,12 +131,11 @@ public class DrinkImageStorageService(
 
             await image.SaveAsync(targetFilePath, encoder, cancellationToken);
 
-            // Return relative client URL
-            return $"/api/storage/drinks/{fileName}";
+            return $"/storage/drinks/{fileName}";
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "ImageSharp failed to process or sanitize image from {Url}", sourceUrl);
+            logger.LogError(ex, "Failed to sanitize or encode uploaded image to WebP");
             if (File.Exists(targetFilePath)) File.Delete(targetFilePath);
             return null;
         }
@@ -156,7 +169,7 @@ public class DrinkImageStorageService(
                 10 => true,
                 172 when bytes[1] >= 16 && bytes[1] <= 31 => true,
                 192 when bytes[2] == 168 => true,
-                169 when bytes[1] == 254 => true, // Link-local
+                169 when bytes[1] == 254 => true,
                 _ => false
             };
         }

@@ -162,6 +162,29 @@ public class DrinksEndpoints : IEndpoint
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
+        // Upload Drink Image (Bartenders and Admins only)
+        group.MapPost("/upload-image", async (
+                IFormFile? file,
+                IDrinkImageStorageService imageStorageService,
+                CancellationToken ct) =>
+        {
+            if (file == null || file.Length == 0)
+                return Results.BadRequest(new { error = "No file was uploaded." });
+
+            if (file.Length > 5 * 1024 * 1024)
+                return Results.BadRequest(new { error = "Image exceeds maximum allowed size of 5MB." });
+
+            await using var stream = file.OpenReadStream();
+            string? savedPath = await imageStorageService.SaveAndSanitizeUploadedImageAsync(stream, file.Length, ct);
+
+            if (string.IsNullOrWhiteSpace(savedPath))
+                return Results.BadRequest(new { error = "Uploaded file is not a valid JPEG, PNG, or WebP image." });
+
+            return Results.Ok(new { imageUrl = savedPath });
+        })
+        .RequireAuthorization("RequireBartenderOrAdmin")
+        .DisableAntiforgery();
+        
         group.MapPost("/", async (
             CreateDrinkCommand command,
             IApplicationDbContext context,
@@ -191,9 +214,14 @@ public class DrinksEndpoints : IEndpoint
             var calculatedMetrics = strengthCalculator.CalculateMetrics(recipeComponents);
             string stepsJson = JsonSerializer.Serialize(command.PreparationSteps);
 
+            // Se la descrizione è vuota, applica una descrizione descrittiva di default
+            string drinkDescription = string.IsNullOrWhiteSpace(command.Description)
+                ? $"Craft cocktail recipe featuring {dbIngredients.Values.FirstOrDefault()?.Name ?? "premium spirits"}."
+                : command.Description.Trim();
+
             var newDrink = new Drink(
-                command.Name,
-                command.Description,
+                command.Name.Trim(),
+                drinkDescription,
                 stepsJson,
                 command.GlassType,
                 command.ImageUrl,

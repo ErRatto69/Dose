@@ -13,6 +13,16 @@ public class GlobalExceptionHandlingMiddleware(RequestDelegate next, ILogger<Glo
         {
             await next(context);
         }
+        catch (ValidationException valEx)
+        {
+            logger.LogWarning("Validation failure on {Path}: {Message}", context.Request.Path, valEx.Message);
+            await HandleExceptionAsync(context, valEx);
+        }
+        catch (DomainException domEx)
+        {
+            logger.LogWarning("Domain rule violation on {Path}: {Message}", context.Request.Path, domEx.Message);
+            await HandleExceptionAsync(context, domEx);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "An unhandled exception occurred: {Message}", ex.Message);

@@ -12,7 +12,7 @@ public record CreateDrinkIngredientItem(
 
 public record CreateDrinkCommand(
     string Name,
-    string Description,
+    string? Description,
     IReadOnlyList<string> PreparationSteps,
     string? GlassType,
     string? ImageUrl,
@@ -24,7 +24,7 @@ public class CreateDrinkCommandValidator : AbstractValidator<CreateDrinkCommand>
     public CreateDrinkCommandValidator()
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(120);
-        RuleFor(x => x.Description).NotEmpty();
+        RuleFor(x => x.Description).MaximumLength(1000);
         RuleFor(x => x.Ingredients)
             .NotEmpty().WithMessage("A drink recipe must contain at least one ingredient.");
 

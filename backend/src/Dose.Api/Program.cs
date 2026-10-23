@@ -27,10 +27,23 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
+// Subito dopo var app = builder.Build(); e prima di app.UseRouting() / app.UseAuthentication()
+
 string storageDrinksPath = Path.Combine(app.Environment.ContentRootPath, "storage", "drinks");
 Directory.CreateDirectory(storageDrinksPath);
 
-app.UseStaticFiles(new StaticFileOptions
+var staticFileOptionsStorage = new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(storageDrinksPath),
+    RequestPath = "/storage/drinks",
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+        ctx.Context.Response.Headers.Append("Cache-Control", "public, max-age=31536000, immutable");
+    }
+};
+
+var staticFileOptionsApiStorage = new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(storageDrinksPath),
     RequestPath = "/api/storage/drinks",
@@ -39,7 +52,10 @@ app.UseStaticFiles(new StaticFileOptions
         ctx.Context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
         ctx.Context.Response.Headers.Append("Cache-Control", "public, max-age=31536000, immutable");
     }
-});
+};
+
+app.UseStaticFiles(staticFileOptionsStorage);
+app.UseStaticFiles(staticFileOptionsApiStorage);
 
 // 3. Automated Database Migration & Seeding on Startup
 using (var scope = app.Services.CreateScope())

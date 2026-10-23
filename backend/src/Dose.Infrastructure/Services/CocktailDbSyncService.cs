@@ -7,6 +7,7 @@ using Dose.Application.Features.Admin.Dtos;
 using Dose.Application.Services;
 using Dose.Domain.Entities;
 using Dose.Domain.Enums;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -18,6 +19,7 @@ public partial class CocktailDbSyncService(
     IDrinkImageStorageService imageStorageService,
     IDrinkStrengthCalculator strengthCalculator,
     IHttpClientFactory httpClientFactory,
+    IWebHostEnvironment environment,
     ILogger<CocktailDbSyncService> logger) : ICocktailDbSyncService
 {
     private static readonly object SyncLock = new();
@@ -122,8 +124,10 @@ public partial class CocktailDbSyncService(
 
                                 if (existingDrink != null)
                                 {
-                                    if (!string.IsNullOrWhiteSpace(storedLocalImagePath) &&
-                                        (string.IsNullOrWhiteSpace(existingDrink.ImageUrl) || existingDrink.ImageUrl.Contains("placeholder") || existingDrink.ImageUrl.StartsWith("http")))
+                                    string storageDir = Path.Combine(environment.ContentRootPath, "storage", "drinks");
+                                    bool shouldUpdate = ShouldReplaceImage(existingDrink.ImageUrl, storageDir);
+
+                                    if (!string.IsNullOrWhiteSpace(storedLocalImagePath) && shouldUpdate)
                                     {
                                         existingDrink.UpdateDetails(
                                             existingDrink.Name,
@@ -463,5 +467,23 @@ public partial class CocktailDbSyncService(
         [JsonPropertyName("strMeasure13")] public string? StrMeasure13 { get; set; }
         [JsonPropertyName("strMeasure14")] public string? StrMeasure14 { get; set; }
         [JsonPropertyName("strMeasure15")] public string? StrMeasure15 { get; set; }
+    }
+    
+    private static bool ShouldReplaceImage(string? currentUrl, string storageDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(currentUrl)) return true;
+        if (currentUrl.Contains("placeholder", StringComparison.OrdinalIgnoreCase)) return true;
+        if (currentUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return true;
+        if (currentUrl.StartsWith("/images/", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Se punta a /storage/drinks ma il file fisico è assente sul filesystem del container
+        if (currentUrl.Contains("/storage/drinks/"))
+        {
+            string fileName = Path.GetFileName(currentUrl);
+            string physicalPath = Path.Combine(storageDirectory, fileName);
+            if (!File.Exists(physicalPath)) return true;
+        }
+
+        return false;
     }
 }
