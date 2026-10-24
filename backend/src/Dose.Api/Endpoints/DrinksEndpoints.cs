@@ -183,7 +183,8 @@ public class DrinksEndpoints : IEndpoint
             return Results.Ok(new { imageUrl = savedPath });
         })
         .RequireAuthorization("RequireBartenderOrAdmin")
-        .DisableAntiforgery();
+        .DisableAntiforgery()
+        .RequireRateLimiting("upload-policy");
         
         group.MapPost("/", async (
             CreateDrinkCommand command,

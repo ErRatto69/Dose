@@ -13,6 +13,11 @@ public class GlobalExceptionHandlingMiddleware(RequestDelegate next, ILogger<Glo
         {
             await next(context);
         }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            logger.LogInformation("Request was cancelled by the client: {Path}", context.Request.Path);
+            context.Response.StatusCode = 499; // Client Closed Request
+        }
         catch (ValidationException valEx)
         {
             logger.LogWarning("Validation failure on {Path}: {Message}", context.Request.Path, valEx.Message);

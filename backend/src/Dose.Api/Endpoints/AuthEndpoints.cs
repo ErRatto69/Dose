@@ -61,7 +61,8 @@ public class AuthEndpoints : IEndpoint
         .WithName("Login")
         .Produces<AuthResponseDto>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
-        .ProducesProblem(StatusCodes.Status401Unauthorized);
+        .ProducesProblem(StatusCodes.Status401Unauthorized)
+        .RequireRateLimiting("auth-policy");
 
         // Public Registration Request with Anti-Spam protection
         group.MapPost("/register-request", async (
@@ -134,7 +135,8 @@ public class AuthEndpoints : IEndpoint
 
             return Results.Accepted(value: new { message = "Your access request has been sent to the administrator." });
         })
-        .WithName("SubmitRegistrationRequest");
+        .WithName("SubmitRegistrationRequest")
+        .RequireRateLimiting("auth-policy");
     }
 
     private static string GetClientIpAddress(HttpContext httpContext)
