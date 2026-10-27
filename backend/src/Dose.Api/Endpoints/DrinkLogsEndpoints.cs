@@ -16,7 +16,7 @@ public class DrinkLogsEndpoints : IEndpoint
     {
         var group = app.MapGroup("/api/drinks").WithTags("Drink Logging");
 
-        // 1. Log an existing catalog drink (with optional custom doses)
+        // 1. Log an existing catalog drink
         group.MapPost("/{id:guid}/log", async (
             Guid id,
             LogDrinkRequestDto request,
@@ -37,7 +37,11 @@ public class DrinkLogsEndpoints : IEndpoint
                 .FirstOrDefaultAsync(d => d.Id == id, ct)
                 ?? throw new NotFoundException(nameof(Drink), id);
 
-            DateTimeOffset consumptionTime = request.ConsumedAt ?? dateTimeProvider.UtcNow;
+            DateTimeOffset now = dateTimeProvider.UtcNow;
+            DateTimeOffset consumptionTime = request.ConsumedAt ?? now;
+            if (consumptionTime < now.AddHours(-12) || consumptionTime > now.AddMinutes(5))
+                throw new DomainException("Consumption time must be within the last 12 hours.");
+
             bool isCustomized = request.CustomComponents is not null && request.CustomComponents.Count > 0;
 
             var logItemsToCreate = new List<DrinkLogItem>();
@@ -148,6 +152,11 @@ public class DrinkLogsEndpoints : IEndpoint
             if (request.Components is null || request.Components.Count == 0)
                 throw new DomainException("Please select at least one ingredient to log.");
 
+            DateTimeOffset now = dateTimeProvider.UtcNow;
+            DateTimeOffset consumptionTime = request.ConsumedAt ?? now;
+            if (consumptionTime < now.AddHours(-12) || consumptionTime > now.AddMinutes(5))
+                throw new DomainException("Consumption time must be within the last 12 hours.");
+
             var ingredientIds = request.Components.Select(c => c.IngredientId).Distinct().ToList();
             var dbIngredients = await context.Ingredients
                 .Where(i => ingredientIds.Contains(i.Id))
@@ -192,8 +201,6 @@ public class DrinkLogsEndpoints : IEndpoint
 
             if (generatedName.Length > 120)
                 generatedName = generatedName[..120];
-
-            DateTimeOffset consumptionTime = request.ConsumedAt ?? dateTimeProvider.UtcNow;
 
             var drinkLog = new DrinkLog(
                 userId,
@@ -246,8 +253,8 @@ public class DrinkLogsEndpoints : IEndpoint
             var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
                 ?? throw new NotFoundException(nameof(User), userId);
 
+            // Carichiamo SOLO il drinkLog senza includere Items nel tracking per evitare conflitti di cancellazione
             var drinkLog = await context.DrinkLogs
-                .Include(l => l.Items)
                 .FirstOrDefaultAsync(l => l.Id == logId && l.UserId == userId, ct)
                 ?? throw new NotFoundException(nameof(DrinkLog), logId);
 
@@ -255,42 +262,6 @@ public class DrinkLogsEndpoints : IEndpoint
             if (drinkLog.ConsumedAt < now.AddHours(-12))
                 throw new DomainException("Only drinks logged within the last 12 hours can be modified.");
 
-            if (request.Components is null || request.Components.Count == 0)
-                throw new DomainException("At least one ingredient with a positive amount is required.");
-
-            var ingredientIds = request.Components.Select(c => c.IngredientId).Distinct().ToList();
-            var dbIngredients = await context.Ingredients
-                .Where(i => ingredientIds.Contains(i.Id))
-                .ToDictionaryAsync(i => i.Id, ct);
-
-            var newItems = new List<DrinkLogItem>();
-            var strengthInputs = new List<RecipeComponentInput>();
-
-            foreach (var comp in request.Components)
-            {
-                if (comp.AmountCl <= 0 || !dbIngredients.TryGetValue(comp.IngredientId, out var ing))
-                    continue;
-
-                decimal pureAlcoholGrams = ing.Abv > 0
-                    ? PureAlcohol.FromClAndAbv(comp.AmountCl, ing.Abv).Grams
-                    : 0.00m;
-
-                newItems.Add(new DrinkLogItem(
-                    ing.Id,
-                    ing.Name,
-                    ing.Category,
-                    ing.Abv,
-                    comp.AmountCl,
-                    pureAlcoholGrams
-                ));
-
-                strengthInputs.Add(new RecipeComponentInput(ing.Category, comp.AmountCl, ing.Abv));
-            }
-
-            if (newItems.Count == 0)
-                throw new DomainException("Total volume must be greater than zero.");
-
-            var metrics = strengthCalculator.CalculateMetrics(strengthInputs);
             DateTimeOffset updatedConsumedAt = request.ConsumedAt ?? drinkLog.ConsumedAt;
             if (updatedConsumedAt < now.AddHours(-12) || updatedConsumedAt > now.AddMinutes(5))
                 throw new DomainException("Consumption time must be within the last 12 hours.");
@@ -299,21 +270,74 @@ public class DrinkLogsEndpoints : IEndpoint
                 ? request.CustomName.Trim()
                 : drinkLog.DrinkNameSnapshot;
 
-            context.DrinkLogItems.RemoveRange(drinkLog.Items);
-            drinkLog.ClearItems();
+            if (request.Components != null && request.Components.Count > 0)
+            {
+                var ingredientIds = request.Components.Select(c => c.IngredientId).Distinct().ToList();
+                var dbIngredients = await context.Ingredients
+                    .Where(i => ingredientIds.Contains(i.Id))
+                    .ToDictionaryAsync(i => i.Id, ct);
 
-            drinkLog.UpdateLogDetails(
-                updatedName,
-                isCustomized: true,
-                updatedConsumedAt,
-                metrics.TotalLiquidVolumeCl,
-                metrics.FinalAbvPercent,
-                metrics.PureAlcohol,
-                request.Notes
-            );
+                var newItems = new List<DrinkLogItem>();
+                var strengthInputs = new List<RecipeComponentInput>();
 
-            foreach (var item in newItems)
-                drinkLog.AddItem(item);
+                foreach (var comp in request.Components)
+                {
+                    if (comp.AmountCl <= 0 || !dbIngredients.TryGetValue(comp.IngredientId, out var ing))
+                        continue;
+
+                    decimal pureAlcoholGrams = ing.Abv > 0
+                        ? PureAlcohol.FromClAndAbv(comp.AmountCl, ing.Abv).Grams
+                        : 0.00m;
+
+                    newItems.Add(new DrinkLogItem(
+                        drinkLog.Id,
+                        ing.Id,
+                        ing.Name,
+                        ing.Category,
+                        ing.Abv,
+                        comp.AmountCl,
+                        pureAlcoholGrams
+                    ));
+
+                    strengthInputs.Add(new RecipeComponentInput(ing.Category, comp.AmountCl, ing.Abv));
+                }
+
+                if (newItems.Count == 0)
+                    throw new DomainException("Total volume must be greater than zero.");
+
+                var metrics = strengthCalculator.CalculateMetrics(strengthInputs);
+
+                // Pulizia sicura direttamente su PostgreSQL senza collisioni nel ChangeTracker
+                await context.DrinkLogItems
+                    .Where(i => i.DrinkLogId == logId)
+                    .ExecuteDeleteAsync(ct);
+
+                drinkLog.UpdateLogDetails(
+                    updatedName,
+                    isCustomized: true,
+                    updatedConsumedAt,
+                    metrics.TotalLiquidVolumeCl,
+                    metrics.FinalAbvPercent,
+                    metrics.PureAlcohol,
+                    request.Notes
+                );
+
+                await context.DrinkLogItems.AddRangeAsync(newItems, ct);
+            }
+            else
+            {
+                var currentPureAlcohol = PureAlcohol.FromGrams(drinkLog.TotalPureAlcoholGrams);
+
+                drinkLog.UpdateLogDetails(
+                    updatedName,
+                    drinkLog.IsCustomized,
+                    updatedConsumedAt,
+                    drinkLog.TotalVolumeCl,
+                    drinkLog.EffectiveAbv,
+                    currentPureAlcohol,
+                    request.Notes
+                );
+            }
 
             await context.SaveChangesAsync(ct);
 
@@ -328,7 +352,7 @@ public class DrinkLogsEndpoints : IEndpoint
                     drinkLog.TotalVolumeCl,
                     drinkLog.EffectiveAbv,
                     drinkLog.TotalPureAlcoholGrams,
-                    metrics.BottleScore1To10
+                    1
                 ),
                 bacResult
             ));

@@ -16,6 +16,38 @@ public class DatabaseSeeder(
 {
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
+        // 0. Auto-riparazione bicchieri doppi ("Beer Glass Glass") e ingredienti con ABV errato dal sync
+        await context.Database.ExecuteSqlRawAsync("""
+                                                      -- Riparazione GlassType
+                                                      UPDATE drinks SET "GlassType" = 'Beer Glass' WHERE "GlassType" ILIKE '%Beer Glass%';
+                                                      UPDATE drinks SET "GlassType" = REPLACE("GlassType", 'Glass Glass', 'Glass') WHERE "GlassType" ILIKE '%Glass Glass%';
+                                                      UPDATE drinks SET "GlassType" = REPLACE("GlassType", 'glass Glass', 'Glass') WHERE "GlassType" ILIKE '%glass Glass%';
+
+                                                      -- Riparazione Lager e Birre erroneamente settate al 40%
+                                                      UPDATE ingredients SET "Abv" = 5.00, "Category" = 'Beer', "SubCategory" = 'Beer' 
+                                                      WHERE LOWER("Name") IN ('lager', 'beer', 'stout', 'pilsner', 'guinness', 'ale') AND "Abv" = 40.00;
+
+                                                      -- Riparazione analcolici erroneamente settati al 40%
+                                                      UPDATE ingredients SET "Abv" = 0.00, "Category" = 'Mixer', "SubCategory" = 'Mixer'
+                                                      WHERE LOWER("Name") IN ('sugar', 'salt', 'pepper', 'egg', 'water', 'ice', 'tabasco sauce', 'worcestershire sauce', 'lemon', 'lime', 'orange', 'mint') AND "Abv" = 40.00;
+                                                  """, cancellationToken);
+
+        // Ricalcola le metriche dei drink che contengono ingredienti corretti (es. 110 in the shade)
+        var drinksToRecalculate = await context.Drinks
+            .Include(d => d.DrinkIngredients)
+            .ThenInclude(di => di.Ingredient)
+            .Where(d => d.DrinkIngredients.Any(di => di.Ingredient.Category == IngredientCategory.Beer))
+            .ToListAsync(cancellationToken);
+
+        foreach (var drink in drinksToRecalculate)
+        {
+            var comps = drink.DrinkIngredients
+                .Select(di => new RecipeComponentInput(di.Ingredient.Category, di.AmountCl, di.Ingredient.Abv))
+                .ToList();
+            drink.UpdateCachedMetrics(strengthCalculator.CalculateMetrics(comps));
+        }
+        await context.SaveChangesAsync(cancellationToken);
+        
         // 1. Ensure required columns, tables, and indexes exist on PostgreSQL
         await context.Database.ExecuteSqlRawAsync("""
                                                   ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS "SubCategory" character varying(60) NOT NULL DEFAULT 'Generic';

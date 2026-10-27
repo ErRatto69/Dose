@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -23,6 +24,8 @@ public partial class CocktailDbSyncService(
     ILogger<CocktailDbSyncService> logger) : ICocktailDbSyncService
 {
     private static readonly object SyncLock = new();
+    private static readonly ConcurrentDictionary<string, IngredientApiInfo> _ingredientCache = new(StringComparer.OrdinalIgnoreCase);
+
     private static CocktailDbSyncStatusDto _status = new(
         IsRunning: false,
         CurrentLetter: "",
@@ -104,7 +107,6 @@ public partial class CocktailDbSyncService(
                         {
                             processed++;
 
-                            // Individual try-catch per drink so one malformed recipe never stops the sync
                             try
                             {
                                 using var scope = scopeFactory.CreateScope();
@@ -112,6 +114,8 @@ public partial class CocktailDbSyncService(
 
                                 string drinkName = apiDrink.StrDrink.Trim();
                                 var existingDrink = await context.Drinks
+                                    .Include(d => d.DrinkIngredients)
+                                        .ThenInclude(di => di.Ingredient)
                                     .FirstOrDefaultAsync(d => d.Name.ToLower() == drinkName.ToLower());
 
                                 string? storedLocalImagePath = null;
@@ -124,25 +128,16 @@ public partial class CocktailDbSyncService(
 
                                 if (existingDrink != null)
                                 {
-                                    string storageDir = Path.Combine(environment.ContentRootPath, "storage", "drinks");
-                                    bool shouldUpdate = ShouldReplaceImage(existingDrink.ImageUrl, storageDir);
-
-                                    if (!string.IsNullOrWhiteSpace(storedLocalImagePath) && shouldUpdate)
+                                    bool updatedAny = await SyncExistingDrinkAsync(existingDrink, apiDrink, storedLocalImagePath, client, context);
+                                    if (updatedAny)
                                     {
-                                        existingDrink.UpdateDetails(
-                                            existingDrink.Name,
-                                            existingDrink.Description,
-                                            existingDrink.PreparationStepsJson,
-                                            existingDrink.GlassType,
-                                            storedLocalImagePath
-                                        );
                                         updated++;
                                         await context.SaveChangesAsync();
                                     }
                                 }
                                 else
                                 {
-                                    var newDrink = await CreateDrinkFromApiAsync(apiDrink, storedLocalImagePath, context);
+                                    var newDrink = await CreateDrinkFromApiAsync(apiDrink, storedLocalImagePath, client, context);
                                     if (newDrink != null)
                                     {
                                         await context.Drinks.AddAsync(newDrink);
@@ -171,7 +166,6 @@ public partial class CocktailDbSyncService(
                     }
                 }
 
-                // Respectful rate limit to avoid 429 Too Many Requests
                 await Task.Delay(200);
             }
         }
@@ -198,9 +192,69 @@ public partial class CocktailDbSyncService(
         }
     }
 
+    private async Task<bool> SyncExistingDrinkAsync(
+        Drink existingDrink,
+        TheCocktailDbDrink apiDrink,
+        string? storedLocalImagePath,
+        HttpClient client,
+        IApplicationDbContext context)
+    {
+        string storageDir = Path.Combine(environment.ContentRootPath, "storage", "drinks");
+        bool shouldUpdateImage = ShouldReplaceImage(existingDrink.ImageUrl, storageDir);
+        string sanitizedGlass = SanitizeGlassType(apiDrink.StrGlass);
+
+        bool changesMade = false;
+
+        string targetImage = shouldUpdateImage && !string.IsNullOrWhiteSpace(storedLocalImagePath)
+            ? storedLocalImagePath
+            : existingDrink.ImageUrl;
+
+        if (existingDrink.GlassType != sanitizedGlass || targetImage != existingDrink.ImageUrl)
+        {
+            existingDrink.UpdateDetails(
+                existingDrink.Name,
+                existingDrink.Description,
+                existingDrink.PreparationStepsJson,
+                sanitizedGlass,
+                targetImage
+            );
+            changesMade = true;
+        }
+
+        // Verifica e aggiorna l'ABV degli ingredienti del drink
+        var rawIngredients = ExtractIngredientsWithMeasures(apiDrink);
+        foreach (var (ingName, _) in rawIngredients)
+        {
+            var meta = await ResolveIngredientMetadataAsync(ingName, apiDrink.StrAlcoholic, client);
+            var dbIng = existingDrink.DrinkIngredients.FirstOrDefault(di => di.Ingredient.Name.Equals(ingName, StringComparison.OrdinalIgnoreCase))?.Ingredient
+                ?? await context.Ingredients.FirstOrDefaultAsync(i => i.Name.ToLower() == ingName.ToLower());
+
+            if (dbIng != null && (dbIng.Abv != meta.Abv || dbIng.Category != meta.Category))
+            {
+                dbIng.SetDetails(dbIng.Name, meta.Category, meta.SubCategory, meta.Abv, dbIng.Flavor);
+                changesMade = true;
+            }
+        }
+
+        // Ricalcola le metriche per correggere valori sballati (es. 40% su birre o 165g di etanolo)
+        var components = existingDrink.DrinkIngredients
+            .Select(di => new RecipeComponentInput(di.Ingredient.Category, di.AmountCl, di.Ingredient.Abv))
+            .ToList();
+
+        var metrics = strengthCalculator.CalculateMetrics(components);
+        if (existingDrink.CachedAbv != metrics.FinalAbvPercent || existingDrink.CachedPureAlcoholGrams != metrics.PureAlcohol.Grams)
+        {
+            existingDrink.UpdateCachedMetrics(metrics);
+            changesMade = true;
+        }
+
+        return changesMade;
+    }
+
     private async Task<Drink?> CreateDrinkFromApiAsync(
         TheCocktailDbDrink apiDrink,
         string? localImageUrl,
+        HttpClient client,
         IApplicationDbContext context)
     {
         string instructions = !string.IsNullOrWhiteSpace(apiDrink.StrInstructions)
@@ -216,7 +270,7 @@ public partial class CocktailDbSyncService(
         if (stepsList.Count == 0) stepsList.Add(instructions);
 
         string stepsJson = JsonSerializer.Serialize(stepsList);
-        string glassType = !string.IsNullOrWhiteSpace(apiDrink.StrGlass) ? apiDrink.StrGlass.Trim() : "Highball";
+        string glassType = SanitizeGlassType(apiDrink.StrGlass);
 
         var rawIngredients = ExtractIngredientsWithMeasures(apiDrink);
         if (rawIngredients.Count == 0) return null;
@@ -235,17 +289,18 @@ public partial class CocktailDbSyncService(
         {
             var (amountCl, note) = ParseMeasureToCl(measureStr);
 
+            var meta = await ResolveIngredientMetadataAsync(ingName, apiDrink.StrAlcoholic, client);
+
             var dbIngredient = await context.Ingredients
                 .FirstOrDefaultAsync(i => i.Name.ToLower() == ingName.ToLower());
 
             if (dbIngredient == null)
             {
-                var (cat, subCat, abv) = DeduceCategoryAndAbv(ingName, apiDrink.StrAlcoholic);
                 dbIngredient = new Ingredient(
                     name: ingName,
-                    category: cat,
-                    subCategory: subCat,
-                    abv: abv,
+                    category: meta.Category,
+                    subCategory: meta.SubCategory,
+                    abv: meta.Abv,
                     flavor: null,
                     isAvailableInBar: false,
                     description: $"Imported from TheCocktailDB for {apiDrink.StrDrink}"
@@ -253,8 +308,11 @@ public partial class CocktailDbSyncService(
                 await context.Ingredients.AddAsync(dbIngredient);
                 await context.SaveChangesAsync();
             }
+            else if (dbIngredient.Abv != meta.Abv || dbIngredient.Category != meta.Category)
+            {
+                dbIngredient.SetDetails(dbIngredient.Name, meta.Category, meta.SubCategory, meta.Abv, dbIngredient.Flavor);
+            }
 
-            // CRITICAL FIX: Deduplicate ingredients for the same drink to respect PK {DrinkId, IngredientId}
             var existingLink = drink.DrinkIngredients.FirstOrDefault(di => di.IngredientId == dbIngredient.Id);
             if (existingLink != null)
             {
@@ -281,7 +339,6 @@ public partial class CocktailDbSyncService(
             }
         }
 
-        // Calculate metrics using deduplicated ingredients
         var componentsToCalculate = drink.DrinkIngredients
             .Select(di => new RecipeComponentInput(di.Ingredient.Category, di.AmountCl, di.Ingredient.Abv))
             .ToList();
@@ -290,6 +347,181 @@ public partial class CocktailDbSyncService(
         drink.UpdateCachedMetrics(metrics);
 
         return drink;
+    }
+
+    private async Task<IngredientApiInfo> ResolveIngredientMetadataAsync(
+        string name,
+        string? drinkAlcoholicStr,
+        HttpClient client)
+    {
+        string key = name.Trim().ToLowerInvariant();
+        if (_ingredientCache.TryGetValue(key, out var cached))
+            return cached;
+
+        // 1. Interroga l'API di TheCocktailDB per ottenere strAlcohol e strABV reale
+        try
+        {
+            string url = $"https://www.thecocktaildb.com/api/json/v1/1/search.php?i={Uri.EscapeDataString(name.Trim())}";
+            string? json = await client.GetStringAsync(url);
+
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var res = JsonSerializer.Deserialize<TheCocktailDbIngredientResponse>(json);
+                var item = res?.Ingredients?.FirstOrDefault();
+                if (item != null)
+                {
+                    bool isAlcohol = string.Equals(item.StrAlcohol, "Yes", StringComparison.OrdinalIgnoreCase);
+                    decimal abv = 0.00m;
+
+                    if (isAlcohol && !string.IsNullOrWhiteSpace(item.StrABV) &&
+                        decimal.TryParse(item.StrABV, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal parsedAbv))
+                    {
+                        abv = Math.Clamp(parsedAbv, 0.00m, 96.00m);
+                    }
+
+                    if (isAlcohol && abv == 0)
+                    {
+                        abv = DeduceAlcoholicFallbackAbv(name, item.StrType);
+                    }
+
+                    var (cat, subCat) = DetermineCategoryAndSubCategory(name, item.StrType, isAlcohol, abv);
+
+                    var resolved = new IngredientApiInfo(name.Trim(), cat, subCat, abv);
+                    _ingredientCache[key] = resolved;
+                    return resolved;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Could not fetch ingredient info for {Name} from API, using fallback", name);
+        }
+
+        // 2. Fallback euristico avanzato se l'ingrediente non è nel DB degli ingredienti dell'API
+        var fallback = DeduceCategoryAndAbv(name, drinkAlcoholicStr);
+        var fallbackInfo = new IngredientApiInfo(name.Trim(), fallback.Category, fallback.SubCategory, fallback.Abv);
+        _ingredientCache[key] = fallbackInfo;
+        return fallbackInfo;
+    }
+
+    private static (IngredientCategory Category, string SubCategory) DetermineCategoryAndSubCategory(
+        string name,
+        string? strType,
+        bool isAlcohol,
+        decimal abv)
+    {
+        string lowerName = name.ToLowerInvariant();
+        string lowerType = (strType ?? "").ToLowerInvariant();
+
+        if (!isAlcohol || abv <= 0)
+        {
+            if (lowerName.Contains("syrup") || lowerName.Contains("sugar") || lowerName.Contains("honey") || lowerType.Contains("syrup"))
+                return (IngredientCategory.Syrup, "Syrup");
+
+            if (lowerName.Contains("leaves") || lowerName.Contains("peel") || lowerName.Contains("cherry") ||
+                lowerName.Contains("olive") || lowerName.Contains("slice") || lowerName.Contains("wedge") || lowerName.Contains("twist"))
+                return (IngredientCategory.Garnish, "Garnish");
+
+            return (IngredientCategory.Mixer, !string.IsNullOrWhiteSpace(strType) ? strType.Trim() : "Mixer");
+        }
+
+        // Alcolico: ABV > 0
+        if (lowerName.Contains("beer") || lowerName.Contains("lager") || lowerName.Contains("ale") ||
+            lowerName.Contains("stout") || lowerName.Contains("cider") || lowerName.Contains("pilsner") || lowerType.Contains("beer"))
+            return (IngredientCategory.Beer, "Beer");
+
+        if (lowerName.Contains("wine") || lowerName.Contains("prosecco") || lowerName.Contains("champagne") ||
+            lowerName.Contains("vermouth") || lowerName.Contains("port") || lowerName.Contains("sherry") || lowerType.Contains("wine"))
+            return (IngredientCategory.Wine, "Wine");
+
+        if (lowerName.Contains("liqueur") || lowerName.Contains("schnapps") || lowerName.Contains("curacao") ||
+            lowerName.Contains("amaretto") || lowerName.Contains("triple sec") || lowerName.Contains("bitter") ||
+            lowerType.Contains("liqueur") || abv <= 28)
+            return (IngredientCategory.Liqueur, !string.IsNullOrWhiteSpace(strType) ? strType.Trim() : "Liqueur");
+
+        return (IngredientCategory.Spirit, !string.IsNullOrWhiteSpace(strType) ? strType.Trim() : "Spirit");
+    }
+
+    private static decimal DeduceAlcoholicFallbackAbv(string name, string? strType)
+    {
+        string lower = (name + " " + (strType ?? "")).ToLowerInvariant();
+        if (lower.Contains("beer") || lower.Contains("lager") || lower.Contains("ale") || lower.Contains("stout") || lower.Contains("cider"))
+            return 5.00m;
+        if (lower.Contains("wine") || lower.Contains("vermouth") || lower.Contains("champagne") || lower.Contains("prosecco"))
+            return 14.00m;
+        if (lower.Contains("liqueur") || lower.Contains("schnapps") || lower.Contains("curacao") || lower.Contains("amaretto"))
+            return 20.00m;
+
+        return 40.00m;
+    }
+
+    private static (IngredientCategory Category, string SubCategory, decimal Abv) DeduceCategoryAndAbv(
+        string name,
+        string? alcoholicStr)
+    {
+        string lower = name.ToLowerInvariant();
+        bool isNonAlcoholicDrink = string.Equals(alcoholicStr, "Non alcoholic", StringComparison.OrdinalIgnoreCase);
+
+        // Tutti gli ingredienti analcolici (ABV = 0)
+        if (isNonAlcoholicDrink ||
+            lower.Contains("juice") || lower.Contains("syrup") || lower.Contains("soda") || lower.Contains("water") ||
+            lower.Contains("cola") || lower.Contains("milk") || lower.Contains("tea") || lower.Contains("coffee") ||
+            lower.Contains("tonic") || lower.Contains("sprite") || lower.Contains("sauce") || lower.Contains("sugar") ||
+            lower.Contains("salt") || lower.Contains("pepper") || lower.Contains("tabasco") || lower.Contains("worcestershire") ||
+            lower.Contains("lemon") || lower.Contains("lime") || lower.Contains("orange") || lower.Contains("mint") ||
+            lower.Contains("cherry") || lower.Contains("ice") || lower.Contains("egg") || lower.Contains("cream") ||
+            lower.Contains("cinnamon") || lower.Contains("nutmeg") || lower.Contains("vanilla") || lower.Contains("ginger"))
+        {
+            var cat = lower.Contains("syrup") || lower.Contains("sugar") ? IngredientCategory.Syrup : IngredientCategory.Mixer;
+            return (cat, name, 0.00m);
+        }
+
+        // Birre
+        if (lower.Contains("beer") || lower.Contains("lager") || lower.Contains("pilsner") || lower.Contains("stout") ||
+            lower.Contains("ale") || lower.Contains("cider") || lower.Contains("guinness") || lower.Contains("corona"))
+            return (IngredientCategory.Beer, "Beer", 5.00m);
+
+        // Vini
+        if (lower.Contains("wine") || lower.Contains("vermouth") || lower.Contains("champagne") || lower.Contains("prosecco") ||
+            lower.Contains("port") || lower.Contains("sherry") || lower.Contains("cava") || lower.Contains("sake"))
+            return (IngredientCategory.Wine, "Wine", 14.00m);
+
+        // Liquori
+        if (lower.Contains("liqueur") || lower.Contains("schnapps") || lower.Contains("curacao") || lower.Contains("amaretto") ||
+            lower.Contains("kahlua") || lower.Contains("cointreau") || lower.Contains("triple sec") || lower.Contains("baileys") ||
+            lower.Contains("campari") || lower.Contains("aperol") || lower.Contains("sambuca") || lower.Contains("creme") ||
+            lower.Contains("chambord") || lower.Contains("frangelico") || lower.Contains("midori") || lower.Contains("galliano"))
+            return (IngredientCategory.Liqueur, "Liqueur", 20.00m);
+
+        // Distillati
+        if (lower.Contains("tequila") || lower.Contains("mezcal")) return (IngredientCategory.Spirit, "Tequila", 38.00m);
+        if (lower.Contains("vodka")) return (IngredientCategory.Spirit, "Vodka", 40.00m);
+        if (lower.Contains("gin")) return (IngredientCategory.Spirit, "Gin", 40.00m);
+        if (lower.Contains("rum")) return (IngredientCategory.Spirit, "Rum", 40.00m);
+        if (lower.Contains("whiskey") || lower.Contains("bourbon") || lower.Contains("scotch")) return (IngredientCategory.Spirit, "Whiskey", 40.00m);
+        if (lower.Contains("brandy") || lower.Contains("cognac")) return (IngredientCategory.Spirit, "Brandy", 40.00m);
+
+        return (IngredientCategory.Spirit, "Spirit", 40.00m);
+    }
+
+    private static string SanitizeGlassType(string? rawGlass)
+    {
+        if (string.IsNullOrWhiteSpace(rawGlass)) return "Highball Glass";
+        string g = rawGlass.Trim();
+
+        // Rimuove doppi suffissi es. "Beer Glass Glass"
+        g = Regex.Replace(g, @"\bglass\s+glass\b", "Glass", RegexOptions.IgnoreCase);
+
+        var words = g.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        string capitalized = string.Join(" ", words.Select(w =>
+            w.Equals("and", StringComparison.OrdinalIgnoreCase) ? "&" : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
+
+        if (capitalized.EndsWith("glass", StringComparison.OrdinalIgnoreCase) && !capitalized.EndsWith("Glass"))
+        {
+            capitalized = capitalized[..^5] + "Glass";
+        }
+
+        return capitalized;
     }
 
     private static List<(string Ingredient, string? Measure)> ExtractIngredientsWithMeasures(TheCocktailDbDrink d)
@@ -395,35 +627,45 @@ public partial class CocktailDbSyncService(
         return sum > 0;
     }
 
-    private static (IngredientCategory Category, string SubCategory, decimal Abv) DeduceCategoryAndAbv(
-        string name,
-        string? alcoholicStr)
+    private static bool ShouldReplaceImage(string? currentUrl, string storageDirectory)
     {
-        string lower = name.ToLowerInvariant();
-        bool isNonAlcoholicDrink = string.Equals(alcoholicStr, "Non alcoholic", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(currentUrl)) return true;
+        if (currentUrl.Contains("placeholder", StringComparison.OrdinalIgnoreCase)) return true;
+        if (currentUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return true;
+        if (currentUrl.StartsWith("/images/", StringComparison.OrdinalIgnoreCase)) return true;
 
-        if (isNonAlcoholicDrink || lower.Contains("juice") || lower.Contains("syrup") || lower.Contains("soda") || lower.Contains("water") || lower.Contains("cola") || lower.Contains("milk") || lower.Contains("tea") || lower.Contains("coffee"))
+        if (currentUrl.Contains("/storage/drinks/"))
         {
-            var cat = lower.Contains("syrup") ? IngredientCategory.Syrup : IngredientCategory.Mixer;
-            return (cat, name, 0.00m);
+            string fileName = Path.GetFileName(currentUrl);
+            string physicalPath = Path.Combine(storageDirectory, fileName);
+            if (!File.Exists(physicalPath)) return true;
         }
 
-        if (lower.Contains("vodka")) return (IngredientCategory.Spirit, "Vodka", 40.00m);
-        if (lower.Contains("gin")) return (IngredientCategory.Spirit, "Gin", 40.00m);
-        if (lower.Contains("rum")) return (IngredientCategory.Spirit, "Rum", 40.00m);
-        if (lower.Contains("tequila")) return (IngredientCategory.Spirit, "Tequila", 38.00m);
-        if (lower.Contains("whiskey") || lower.Contains("bourbon") || lower.Contains("scotch")) return (IngredientCategory.Spirit, "Whiskey", 40.00m);
-        if (lower.Contains("liqueur") || lower.Contains("schnapps") || lower.Contains("curacao") || lower.Contains("amaretto") || lower.Contains("kahlua")) return (IngredientCategory.Liqueur, "Liqueur", 24.00m);
-        if (lower.Contains("wine") || lower.Contains("vermouth") || lower.Contains("champagne") || lower.Contains("prosecco")) return (IngredientCategory.Wine, "Wine", 14.00m);
-        if (lower.Contains("beer") || lower.Contains("ale") || lower.Contains("cider")) return (IngredientCategory.Beer, "Beer", 5.00m);
-
-        return (IngredientCategory.Spirit, "Spirit", 40.00m);
+        return false;
     }
+
+    private sealed record IngredientApiInfo(string Name, IngredientCategory Category, string SubCategory, decimal Abv);
 
     private sealed class TheCocktailDbResponse
     {
         [JsonPropertyName("drinks")]
         public List<TheCocktailDbDrink>? Drinks { get; set; }
+    }
+
+    private sealed class TheCocktailDbIngredientResponse
+    {
+        [JsonPropertyName("ingredients")]
+        public List<TheCocktailDbIngredientDto>? Ingredients { get; set; }
+    }
+
+    private sealed class TheCocktailDbIngredientDto
+    {
+        [JsonPropertyName("idIngredient")] public string? IdIngredient { get; set; }
+        [JsonPropertyName("strIngredient")] public string? StrIngredient { get; set; }
+        [JsonPropertyName("strDescription")] public string? StrDescription { get; set; }
+        [JsonPropertyName("strType")] public string? StrType { get; set; }
+        [JsonPropertyName("strAlcohol")] public string? StrAlcohol { get; set; }
+        [JsonPropertyName("strABV")] public string? StrABV { get; set; }
     }
 
     private sealed class TheCocktailDbDrink
@@ -467,23 +709,5 @@ public partial class CocktailDbSyncService(
         [JsonPropertyName("strMeasure13")] public string? StrMeasure13 { get; set; }
         [JsonPropertyName("strMeasure14")] public string? StrMeasure14 { get; set; }
         [JsonPropertyName("strMeasure15")] public string? StrMeasure15 { get; set; }
-    }
-    
-    private static bool ShouldReplaceImage(string? currentUrl, string storageDirectory)
-    {
-        if (string.IsNullOrWhiteSpace(currentUrl)) return true;
-        if (currentUrl.Contains("placeholder", StringComparison.OrdinalIgnoreCase)) return true;
-        if (currentUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return true;
-        if (currentUrl.StartsWith("/images/", StringComparison.OrdinalIgnoreCase)) return true;
-
-        // Se punta a /storage/drinks ma il file fisico è assente sul filesystem del container
-        if (currentUrl.Contains("/storage/drinks/"))
-        {
-            string fileName = Path.GetFileName(currentUrl);
-            string physicalPath = Path.Combine(storageDirectory, fileName);
-            if (!File.Exists(physicalPath)) return true;
-        }
-
-        return false;
     }
 }

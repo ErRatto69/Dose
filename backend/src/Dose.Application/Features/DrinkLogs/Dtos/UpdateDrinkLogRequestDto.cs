@@ -4,5 +4,5 @@ public record UpdateDrinkLogRequestDto(
     string? CustomName,
     DateTimeOffset? ConsumedAt,
     string? Notes,
-    IReadOnlyList<CustomIngredientDoseDto> Components
+    IReadOnlyList<CustomIngredientDoseDto>? Components = null
 );
