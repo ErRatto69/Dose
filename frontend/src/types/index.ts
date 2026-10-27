@@ -282,7 +282,7 @@ export interface UpdateDrinkLogRequest {
     customName?: string;
     consumedAt?: string;
     notes?: string;
-    components: CustomIngredientDose[];
+    components?: CustomIngredientDose[];
 }
 
 export interface RankingTier {

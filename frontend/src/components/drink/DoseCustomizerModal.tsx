@@ -6,13 +6,13 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { formatVolume } from '@/utils/units';
 import { calculateStrengthMetrics, estimateDeltaBac } from '@/utils/strengthCalc';
 import { BottleStrengthMeter } from './BottleStrengthMeter';
+import { RecentTimePicker } from '@/components/common/RecentTimePicker';
 import { bacApi } from '@/api/bac.api';
 import { drinksApi } from '@/api/drinks.api';
 import {
     X,
     Minus,
     Plus,
-    Clock,
     Check,
     Loader2,
     Trash2,
@@ -105,7 +105,7 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
             setIsSubmitting(true);
             const consumedAt = isNow
                 ? new Date().toISOString()
-                : new Date(customConsumedAt).toISOString();
+                : (customConsumedAt.includes('T') ? new Date(customConsumedAt).toISOString() : new Date().toISOString());
 
             await bacApi.logDrink(drink.id, {
                 consumedAt,
@@ -331,7 +331,6 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                                             </div>
                                         </div>
 
-                                        {/* Brand Switcher */}
                                         {alternatives.length > 1 && (
                                             <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-between gap-2 text-xs">
                                                 <span className="text-[11px] text-neutral-400 flex items-center gap-1">
@@ -362,47 +361,14 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                         </div>
                     </div>
 
-                    {/* Consumption Time */}
-                    <div>
-                        <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5 mb-2">
-                            <Clock className="w-3.5 h-3.5 text-red-500" />
-                            When was this consumed?
-                        </label>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsNow(true)}
-                                className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
-                                    isNow
-                                        ? 'bg-red-600/20 border-red-600 text-red-300'
-                                        : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-                                }`}
-                            >
-                                {isNow && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                                Now (Default)
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setIsNow(false)}
-                                className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                                    !isNow
-                                        ? 'bg-red-600/20 border-red-600 text-red-300'
-                                        : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-                                }`}
-                            >
-                                Choose Custom Time
-                            </button>
-                            {!isNow && (
-                                <input
-                                    type="datetime-local"
-                                    value={customConsumedAt}
-                                    max={new Date().toISOString().slice(0, 16)}
-                                    onChange={(e) => setCustomConsumedAt(e.target.value)}
-                                    className="flex-1 px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-neutral-100 focus:outline-none focus:border-red-600"
-                                />
-                            )}
-                        </div>
-                    </div>
+                    {/* Integrated Alarm-Style Roller Time Picker */}
+                    <RecentTimePicker
+                        value={customConsumedAt}
+                        onChange={(isoStr) => setCustomConsumedAt(isoStr)}
+                        isNow={isNow}
+                        onToggleNow={(now) => setIsNow(now)}
+                        label="When was this consumed?"
+                    />
 
                     {/* Notes */}
                     <div>

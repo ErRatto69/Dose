@@ -83,7 +83,7 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
                         <div className="flex flex-wrap items-center gap-2 mb-1.5">
                             {drink.glassType && (
                                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-neutral-950 text-neutral-300 border border-neutral-800">
-                                    {drink.glassType} Glass
+                                    {drink.glassType}
                                 </span>
                             )}
                             {drink.averageRating > 0 && (

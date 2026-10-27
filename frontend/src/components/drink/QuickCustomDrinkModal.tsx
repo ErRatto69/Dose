@@ -7,6 +7,7 @@ import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { formatVolume } from '@/utils/units';
 import { calculateStrengthMetrics, estimateDeltaBac } from '@/utils/strengthCalc';
 import { BottleStrengthMeter } from './BottleStrengthMeter';
+import { RecentTimePicker } from '@/components/common/RecentTimePicker';
 import type { Ingredient } from '@/types';
 import {
     X,
@@ -15,7 +16,6 @@ import {
     Minus,
     Trash2,
     Zap,
-    Clock,
     Check,
     Loader2,
     AlertTriangle,
@@ -31,11 +31,6 @@ interface SelectedCustomComponent {
     ingredient: Ingredient;
     amountCl: number;
 }
-
-const getLocalDateTimeInputValue = (date: Date = new Date()): string => {
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-};
 
 const QUICK_POUR_PRESETS = [
     { label: '2 cl (Mini Shot)', cl: 2 },
@@ -57,7 +52,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
     const [customName, setCustomName] = useState('');
     const [items, setItems] = useState<SelectedCustomComponent[]>([]);
     const [isNow, setIsNow] = useState(true);
-    const [customConsumedAt, setCustomConsumedAt] = useState(getLocalDateTimeInputValue());
+    const [customConsumedAt, setCustomConsumedAt] = useState(() => new Date().toISOString());
     const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -85,7 +80,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                     ? 15
                     : ing.category === 'Mixer'
                         ? 10
-                        : 4; // 4cl standard shot for Spirits/Liqueurs
+                        : 4;
 
         setItems((prev) => {
             const existing = prev.find((x) => x.ingredient.id === ing.id);
@@ -151,7 +146,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
             setIsSubmitting(true);
             const consumedAt = isNow
                 ? new Date().toISOString()
-                : new Date(customConsumedAt).toISOString();
+                : (customConsumedAt.includes('T') ? new Date(customConsumedAt).toISOString() : new Date().toISOString());
 
             await bacApi.logCustomDrink({
                 customName: customName.trim() || undefined,
@@ -168,6 +163,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
             setItems([]);
             setCustomName('');
             setNotes('');
+            setIsNow(true);
             onClose();
         } catch (err) {
             console.error('Failed to log custom pour:', err);
@@ -260,7 +256,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                         </div>
                     </div>
 
-                    {/* Adjust Doses & Quick Presets */}
+                    {/* Adjust Doses & Presets */}
                     <div className="space-y-2.5">
                         <label className="text-xs font-semibold text-neutral-300 block">
                             2. Adjust Dose ({items.length} selected)
@@ -345,49 +341,28 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                         />
                     )}
 
-                    {/* Custom Label & Time */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                            <label className="text-xs font-semibold text-neutral-300 block mb-1">
-                                Optional Label
-                            </label>
-                            <input
-                                type="text"
-                                value={customName}
-                                onChange={(e) => setCustomName(e.target.value)}
-                                placeholder="e.g., Shot, Double Vodka..."
-                                className="w-full px-3 py-2 text-xs rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-red-600"
-                            />
-                        </div>
-                        <div>
-                            <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1 mb-1">
-                                <Clock className="w-3.5 h-3.5 text-red-500" />
-                                Time
-                            </label>
-                            <div className="flex gap-1.5">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsNow(true)}
-                                    className={`px-3 py-2 rounded-xl text-xs font-bold border ${
-                                        isNow
-                                            ? 'bg-red-600/20 border-red-600 text-red-300'
-                                            : 'bg-neutral-950 border-neutral-800 text-neutral-400'
-                                    }`}
-                                >
-                                    Now
-                                </button>
-                                <input
-                                    type="datetime-local"
-                                    value={customConsumedAt}
-                                    onChange={(e) => {
-                                        setCustomConsumedAt(e.target.value);
-                                        setIsNow(false);
-                                    }}
-                                    className="flex-1 px-2.5 py-1.5 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-neutral-200 focus:outline-none focus:border-red-600"
-                                />
-                            </div>
-                        </div>
+                    {/* Custom Label */}
+                    <div>
+                        <label className="text-xs font-semibold text-neutral-300 block mb-1">
+                            Optional Label
+                        </label>
+                        <input
+                            type="text"
+                            value={customName}
+                            onChange={(e) => setCustomName(e.target.value)}
+                            placeholder="e.g., Shot, Double Vodka, Draft Beer..."
+                            className="w-full px-3 py-2 text-xs rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-red-600"
+                        />
                     </div>
+
+                    {/* Integrated Alarm-Style Roller Time Picker */}
+                    <RecentTimePicker
+                        value={customConsumedAt}
+                        onChange={(isoStr) => setCustomConsumedAt(isoStr)}
+                        isNow={isNow}
+                        onToggleNow={(now) => setIsNow(now)}
+                        label="Time Consumed"
+                    />
 
                     {/* Safety Disclaimer Callout */}
                     <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-800/60 text-xs text-red-200 flex items-start gap-2.5">

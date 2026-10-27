@@ -25,6 +25,7 @@ import {
     RefreshCw,
     Edit3,
     Trash2,
+    X,
 } from 'lucide-react';
 
 export const MyBacDashboardPage: React.FC = () => {
@@ -32,6 +33,7 @@ export const MyBacDashboardPage: React.FC = () => {
     const queryClient = useQueryClient();
 
     const [editingEvent, setEditingEvent] = useState<DrinkEvent | null>(null);
+    const [drinkToDelete, setDrinkToDelete] = useState<DrinkEvent | null>(null);
 
     const {
         data: bacData,
@@ -49,6 +51,7 @@ export const MyBacDashboardPage: React.FC = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['my-bac-status'] });
             queryClient.invalidateQueries({ queryKey: ['monthly-leaderboard'] });
+            setDrinkToDelete(null);
         },
     });
 
@@ -189,7 +192,7 @@ export const MyBacDashboardPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Active Drinks in Last 12h (Editable & Deletable) */}
+                    {/* Active Drinks in Last 12h */}
                     <div className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-3 shadow-xl">
                         <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
@@ -229,17 +232,13 @@ export const MyBacDashboardPage: React.FC = () => {
                                                 type="button"
                                                 onClick={() => setEditingEvent(drink)}
                                                 className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
-                                                title="Edit dose or time"
+                                                title="Edit drink"
                                             >
                                                 <Edit3 className="w-3.5 h-3.5" />
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    if (window.confirm(`Delete ${drink.drinkName} from your logs?`)) {
-                                                        deleteMutation.mutate(drink.logId);
-                                                    }
-                                                }}
+                                                onClick={() => setDrinkToDelete(drink)}
                                                 className="p-2 rounded-xl bg-neutral-900 hover:bg-red-950/70 border border-neutral-800 text-neutral-400 hover:text-red-400 transition-colors"
                                                 title="Delete drink"
                                             >
@@ -264,6 +263,61 @@ export const MyBacDashboardPage: React.FC = () => {
                 isOpen={!!editingEvent}
                 onClose={() => setEditingEvent(null)}
             />
+
+            {/* Modale di Conferma Eliminazione */}
+            {drinkToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md">
+                    <div
+                        className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
+                        role="dialog"
+                        aria-modal="true"
+                    >
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-red-600/15 border border-red-600/30 flex items-center justify-center text-red-500">
+                                <Trash2 className="w-5 h-5" />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setDrinkToDelete(null)}
+                                className="p-1.5 text-neutral-400 hover:text-white rounded-full bg-neutral-800 transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div>
+                            <h3 className="text-base font-bold text-white">Delete Drink Log?</h3>
+                            <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                                Remove <strong className="text-neutral-200">{drinkToDelete.drinkName}</strong> from your records? Your current BAC and sober countdown will be recalculated immediately.
+                            </p>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+                            <button
+                                type="button"
+                                onClick={() => setDrinkToDelete(null)}
+                                disabled={deleteMutation.isPending}
+                                className="px-3.5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 text-xs font-bold transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => deleteMutation.mutate(drinkToDelete.logId)}
+                                disabled={deleteMutation.isPending}
+                                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-red-600/30 transition-all active:scale-95"
+                            >
+                                {deleteMutation.isPending ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                                <span>Delete Log</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
