@@ -8,7 +8,7 @@ import { formatVolume } from '@/utils/units';
 import { calculateStrengthMetrics, estimateDeltaBac } from '@/utils/strengthCalc';
 import { BottleStrengthMeter } from './BottleStrengthMeter';
 import { RecentTimePicker } from '@/components/common/RecentTimePicker';
-import type { Ingredient } from '@/types';
+import type { Ingredient, StomachState } from '@/types';
 import {
     X,
     Search,
@@ -19,6 +19,7 @@ import {
     Check,
     Loader2,
     AlertTriangle,
+    Flame,
 } from 'lucide-react';
 import { matchesSearchQuery } from '@/utils/textSearch';
 
@@ -51,6 +52,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [customName, setCustomName] = useState('');
     const [items, setItems] = useState<SelectedCustomComponent[]>([]);
+    const [stomachState, setStomachState] = useState<StomachState>('LightSnack');
     const [isNow, setIsNow] = useState(true);
     const [customConsumedAt, setCustomConsumedAt] = useState(() => new Date().toISOString());
     const [notes, setNotes] = useState('');
@@ -122,26 +124,28 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                 category: x.ingredient.category,
                 amountCl: x.amountCl,
                 abvPercent: x.ingredient.abv,
+                ingredientName: x.ingredient.name,
             }))
         );
     }, [items]);
 
     const deltaBacEstimate = useMemo(() => {
         if (!user) return 0;
+        const normalizedSex = user.sex === 'Female' || String(user.sex) === '1' ? 'Female' : 'Male';
         return estimateDeltaBac(
             metrics.pureAlcoholGrams,
             user.weightKg,
             user.heightCm,
-            user.sex,
-            user.birthYear
+            normalizedSex,
+            user.birthYear ?? undefined,
+            stomachState
         );
-    }, [metrics.pureAlcoholGrams, user]);
+    }, [metrics.pureAlcoholGrams, user, stomachState]);
 
     if (!isOpen) return null;
 
     const handleSubmit = async () => {
         if (items.length === 0) return;
-
         try {
             setIsSubmitting(true);
             const consumedAt = isNow
@@ -152,6 +156,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                 customName: customName.trim() || undefined,
                 consumedAt,
                 notes: notes.trim() || undefined,
+                stomachState,
                 components: items.map((x) => ({
                     ingredientId: x.ingredient.id,
                     amountCl: x.amountCl,
@@ -198,7 +203,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                 </div>
 
                 {/* Live Telemetry Bar */}
-                <div className="px-5 py-3 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between text-xs">
+                <div className="px-5 py-3 bg-neutral-950 border-b border-neutral-800 grid grid-cols-4 gap-2 text-xs">
                     <div>
                         <span className="text-neutral-400 block">Total Volume</span>
                         <strong className="text-neutral-200 text-sm font-mono">
@@ -211,8 +216,17 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                             {metrics.pureAlcoholGrams.toFixed(1)}g
                         </strong>
                     </div>
+                    <div className="text-center">
+                        <span className="text-neutral-400 block flex items-center justify-center gap-1">
+                            <Flame className="w-3 h-3 text-amber-500" />
+                            Calories
+                        </span>
+                        <strong className="text-amber-400 text-sm font-mono">
+                            ~{metrics.estimatedKcal} kcal
+                        </strong>
+                    </div>
                     <div className="text-right">
-                        <span className="text-neutral-400 block">Estimated +BAC</span>
+                        <span className="text-neutral-400 block">Est. +BAC</span>
                         <strong className="text-red-400 text-sm font-mono">
                             +{deltaBacEstimate.toFixed(2)} g/L
                         </strong>
@@ -221,10 +235,40 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
 
                 {/* Body */}
                 <div className="p-5 overflow-y-auto space-y-5 flex-1">
+                    {/* Stomach State Selector */}
+                    <div>
+                        <label className="text-xs font-semibold text-neutral-300 block mb-2">
+                            Stomach Fullness (Metabolic Rate)
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {(
+                                [
+                                    { value: 'Empty', label: 'Empty', desc: '+10% peak' },
+                                    { value: 'LightSnack', label: 'Light Snack', desc: 'Standard' },
+                                    { value: 'FullMeal', label: 'Full Meal', desc: '-22% peak' },
+                                ] as const
+                            ).map((item) => (
+                                <button
+                                    key={item.value}
+                                    type="button"
+                                    onClick={() => setStomachState(item.value)}
+                                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-0.5 ${
+                                        stomachState === item.value
+                                            ? 'bg-red-600 text-white border-red-500 shadow-sm shadow-red-600/30'
+                                            : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                                    }`}
+                                >
+                                    <span>{item.label}</span>
+                                    <span className="text-[10px] font-normal opacity-80">{item.desc}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     {/* Search & Select Bottles */}
                     <div>
                         <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
-                            1. Select what you are drinking
+                            Select what you are drinking
                         </label>
                         <div className="relative">
                             <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -259,7 +303,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                     {/* Adjust Doses & Presets */}
                     <div className="space-y-2.5">
                         <label className="text-xs font-semibold text-neutral-300 block">
-                            2. Adjust Dose ({items.length} selected)
+                            Adjust Dose ({items.length} selected)
                         </label>
                         {items.length === 0 ? (
                             <div className="p-6 rounded-2xl bg-neutral-950 border border-dashed border-neutral-800 text-center text-xs text-neutral-500">
@@ -281,7 +325,6 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                                                 {ingredient.abv > 0 && ` • ${ingredient.abv}% ABV`}
                                             </div>
                                         </div>
-
                                         <div className="flex items-center gap-1.5">
                                             <button
                                                 type="button"
@@ -355,7 +398,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                         />
                     </div>
 
-                    {/* Integrated Alarm-Style Roller Time Picker */}
+                    {/* Integrated Time Picker */}
                     <RecentTimePicker
                         value={customConsumedAt}
                         onChange={(isoStr) => setCustomConsumedAt(isoStr)}
@@ -368,7 +411,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                     <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-800/60 text-xs text-red-200 flex items-start gap-2.5">
                         <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                         <div className="leading-relaxed">
-                            <strong>Responsible Drinking:</strong> Do not drive if your BAC exceeds 0.50 g/L. Any drink logged here can be edited or deleted within 12 hours from your <strong>My BAC</strong> telemetry page.
+                            <strong>Responsible Drinking:</strong> Do not drive if your BAC exceeds 0.50 g/L[cite: 7]. Any drink logged here can be edited or deleted within 12 hours from your <strong>My BAC</strong> telemetry page[cite: 7].
                         </div>
                     </div>
                 </div>

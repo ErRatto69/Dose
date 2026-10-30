@@ -4,7 +4,7 @@ import { drinksApi } from '@/api/drinks.api';
 import { matchesSearchQuery } from '@/utils/textSearch';
 import { calculateStrengthMetrics } from '@/utils/strengthCalc';
 import { BottleStrengthMeter } from './BottleStrengthMeter';
-import type { Ingredient, IngredientCategory } from '@/types';
+import type { DrinkDetail, Ingredient, IngredientCategory } from '@/types';
 import {
     X,
     Plus,
@@ -16,11 +16,17 @@ import {
     Search,
     ChevronDown,
     UploadCloud,
+    Lock,
+    Unlock,
+    Copy,
+    Edit3,
 } from 'lucide-react';
 
 interface CreateDrinkModalProps {
     isOpen: boolean;
     onClose: () => void;
+    initialDrink?: DrinkDetail | null;
+    mode?: 'create' | 'edit' | 'duplicate';
 }
 
 interface RecipeBuilderItem {
@@ -43,7 +49,12 @@ const CATEGORY_FILTERS: Array<{ label: string; value: 'ALL' | IngredientCategory
 
 const DOSE_CHIPS = [1.5, 3, 4.5, 6, 12];
 
-export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onClose }) => {
+export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({
+                                                                      isOpen,
+                                                                      onClose,
+                                                                      initialDrink = null,
+                                                                      mode = 'create',
+                                                                  }) => {
     const queryClient = useQueryClient();
 
     const [name, setName] = useState('');
@@ -60,6 +71,7 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
         'Fill the glass with ice.',
         'Pour the ingredients and stir gently.',
     ]);
+    const [isLockedByCreator, setIsLockedByCreator] = useState(false);
 
     // Image Upload State
     const [imageFile, setImageFile] = useState<File | null>(null);
@@ -79,6 +91,54 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
         queryFn: () => drinksApi.getGlassTypes(glassSearch),
         enabled: isOpen,
     });
+
+    // Populate data when opening in Edit or Duplicate mode
+    useEffect(() => {
+        if (!isOpen) return;
+
+        if (initialDrink) {
+            setName(mode === 'duplicate' ? `${initialDrink.name} (Remix)` : initialDrink.name);
+            setGlassType(initialDrink.glassType || 'Highball');
+            setDescription(initialDrink.description || '');
+            setSteps(initialDrink.preparationSteps?.length ? initialDrink.preparationSteps : ['Mix all ingredients and serve.']);
+            setIsLockedByCreator(initialDrink.isLockedByCreator || false);
+            setImagePreview(initialDrink.imageUrl || null);
+            setImageFile(null);
+
+            // Map ingredients
+            const mappedItems: RecipeBuilderItem[] = initialDrink.ingredients.map((di) => {
+                const matchedIng = ingredients.find((i) => i.id === di.ingredientId) || {
+                    id: di.ingredientId,
+                    name: di.name,
+                    category: di.category as IngredientCategory,
+                    subCategory: di.subCategory,
+                    flavor: di.flavor,
+                    abv: di.abv,
+                    isAvailableInBar: true,
+                };
+                return {
+                    ingredient: matchedIng,
+                    amountCl: di.amountCl,
+                    displayUnitNote: di.displayUnitNote || '',
+                    isOptional: di.isOptional,
+                };
+            });
+            setSelectedItems(mappedItems);
+        } else {
+            setName('');
+            setGlassType('Highball');
+            setDescription('');
+            setSelectedItems([]);
+            setSteps([
+                'Fill the glass with ice.',
+                'Pour the ingredients and stir gently.',
+            ]);
+            setIsLockedByCreator(false);
+            setImageFile(null);
+            setImagePreview(null);
+        }
+        setErrorMsg(null);
+    }, [isOpen, initialDrink, mode, ingredients]);
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -106,7 +166,7 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
     };
 
     const handleRemoveImage = () => {
-        if (imagePreview) URL.revokeObjectURL(imagePreview);
+        if (imageFile && imagePreview) URL.revokeObjectURL(imagePreview);
         setImageFile(null);
         setImagePreview(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -198,29 +258,29 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
         );
     }, [selectedItems]);
 
-    const createMutation = useMutation({
+    const saveMutation = useMutation({
         mutationFn: async () => {
             setErrorMsg(null);
             if (selectedItems.length === 0) {
                 throw new Error('Please select at least one ingredient for the recipe.');
             }
 
-            let uploadedImageUrl: string | undefined = undefined;
+            let finalImageUrl = imagePreview || undefined;
             if (imageFile) {
                 const uploadRes = await drinksApi.uploadDrinkImage(imageFile);
-                uploadedImageUrl = uploadRes.imageUrl;
+                finalImageUrl = uploadRes.imageUrl;
             }
 
-            // Fallback per non inviare mai una descrizione vuota al server
             const effectiveDescription =
                 description.trim() ||
                 `Craft cocktail recipe featuring ${selectedItems.map((i) => i.ingredient.name).join(', ')}.`;
 
-            return drinksApi.createDrink({
+            const payload = {
                 name: name.trim(),
                 description: effectiveDescription,
                 glassType: glassType.trim() || undefined,
-                imageUrl: uploadedImageUrl,
+                imageUrl: finalImageUrl,
+                isLockedByCreator,
                 preparationSteps: steps.map((s) => s.trim()).filter(Boolean),
                 ingredients: selectedItems.map((r, idx) => ({
                     ingredientId: r.ingredient.id,
@@ -229,15 +289,20 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
                     isOptional: r.isOptional,
                     sortOrder: idx + 1,
                 })),
-            });
+            };
+
+            if (mode === 'edit' && initialDrink) {
+                return drinksApi.updateDrink(initialDrink.id, payload);
+            } else {
+                return drinksApi.createDrink(payload);
+            }
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['drinks-catalog-infinite'] });
             queryClient.invalidateQueries({ queryKey: ['drinks-catalog'] });
-            setName('');
-            setDescription('');
-            setSelectedItems([]);
-            handleRemoveImage();
+            if (initialDrink) {
+                queryClient.invalidateQueries({ queryKey: ['drink-detail', initialDrink.id] });
+            }
             onClose();
         },
         onError: (err: unknown) => {
@@ -262,24 +327,45 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
                 setErrorMsg(
                     axiosErr.response?.data?.error ||
                     axiosErr.response?.data?.detail ||
-                    'Failed to create drink recipe.'
+                    'Failed to save drink recipe.'
                 );
             } else if (err instanceof Error) {
                 setErrorMsg(err.message);
             } else {
-                setErrorMsg('Failed to create drink recipe.');
+                setErrorMsg('Failed to save drink recipe.');
             }
         },
     });
 
     if (!isOpen) return null;
 
+    const modalTitle =
+        mode === 'edit'
+            ? 'Edit Cocktail Recipe'
+            : mode === 'duplicate'
+                ? 'Duplicate & Remix Cocktail'
+                : 'Create Cocktail Recipe';
+
+    const submitBtnLabel =
+        mode === 'edit'
+            ? 'Save Changes'
+            : mode === 'duplicate'
+                ? 'Create Remix'
+                : 'Publish Drink';
+
     return (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-neutral-950/80 backdrop-blur-md">
             <div className="w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
                 {/* Header */}
                 <div className="p-4 sm:p-5 border-b border-neutral-800 flex items-center justify-between bg-neutral-900">
-                    <h2 className="text-xl font-black text-white">Create Cocktail Recipe</h2>
+                    <div className="flex items-center gap-2">
+                        {mode === 'edit' ? (
+                            <Edit3 className="w-5 h-5 text-red-500" />
+                        ) : mode === 'duplicate' ? (
+                            <Copy className="w-5 h-5 text-red-500" />
+                        ) : null}
+                        <h2 className="text-xl font-black text-white">{modalTitle}</h2>
+                    </div>
                     <button
                         type="button"
                         onClick={onClose}
@@ -307,11 +393,11 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
                     </div>
                 </div>
 
-                {/* Scrollable Form Body */}
+                {/* Form Body */}
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();
-                        createMutation.mutate();
+                        saveMutation.mutate();
                     }}
                     className="p-5 overflow-y-auto space-y-6 flex-1"
                 >
@@ -445,7 +531,33 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
                         </div>
                     </div>
 
-                    {/* Strength Preview Gauge with Exact Prop Names */}
+                    {/* Creator Edit Lock Toggle (Private Recipe) */}
+                    <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isLockedByCreator ? 'bg-amber-500/15 text-amber-400' : 'bg-neutral-900 text-neutral-400'}`}>
+                                {isLockedByCreator ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                            </div>
+                            <div>
+                                <span className="text-xs font-bold text-white block">
+                                    Lock Recipe (Private Edit)
+                                </span>
+                                <span className="text-[11px] text-neutral-400 block">
+                                    Visible to everyone in catalog, but editable only by you (and admin).
+                                </span>
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={isLockedByCreator}
+                                onChange={(e) => setIsLockedByCreator(e.target.checked)}
+                                className="sr-only peer"
+                            />
+                            <div className="w-10 h-6 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                        </label>
+                    </div>
+
+                    {/* Strength Preview Gauge */}
                     {selectedItems.length > 0 && (
                         <BottleStrengthMeter
                             score1To10={previewMetrics.bottleScore1To10}
@@ -527,7 +639,7 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
                         </div>
                     </div>
 
-                    {/* Step 2: Doses and Adjustments (with DOSE_CHIPS) */}
+                    {/* Step 2: Doses and Adjustments */}
                     <div className="space-y-2.5">
                         <label className="text-xs font-bold text-neutral-200 block">
                             2. Adjust Quantities ({selectedItems.length} selected)
@@ -688,15 +800,15 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({ isOpen, onCl
                         </button>
                         <button
                             type="submit"
-                            disabled={createMutation.isPending || selectedItems.length === 0}
+                            disabled={saveMutation.isPending || selectedItems.length === 0}
                             className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-red-600/25 transition-all"
                         >
-                            {createMutation.isPending ? (
+                            {saveMutation.isPending ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             ) : (
                                 <Check className="w-3.5 h-3.5 stroke-[3]" />
                             )}
-                            <span>Publish Drink</span>
+                            <span>{submitBtnLabel}</span>
                         </button>
                     </div>
                 </form>

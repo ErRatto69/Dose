@@ -44,7 +44,12 @@ export const CatalogPage: React.FC = () => {
     );
     const [viewedDrink, setViewedDrink] = useState<DrinkDetail | null>(null);
     const [isQuickPourOpen, setIsQuickPourOpen] = useState(false);
+
+    // Create / Edit / Duplicate state
     const [isCreateDrinkOpen, setIsCreateDrinkOpen] = useState(false);
+    const [createModalMode, setCreateModalMode] = useState<'create' | 'edit' | 'duplicate'>('create');
+    const [initialDrinkForForm, setInitialDrinkForForm] = useState<DrinkDetail | null>(null);
+
     const [isCreateIngredientOpen, setIsCreateIngredientOpen] = useState(false);
     const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
@@ -94,7 +99,6 @@ export const CatalogPage: React.FC = () => {
             lastPage.hasNextPage ? lastPage.pageNumber + 1 : undefined,
     });
 
-    // Flatten pages into a continuous array of drinks
     const drinks = pagedDrinksData?.pages.flatMap((page) => page.items) ?? [];
     const totalCount = pagedDrinksData?.pages[0]?.totalCount ?? drinks.length;
 
@@ -131,6 +135,24 @@ export const CatalogPage: React.FC = () => {
         } finally {
             setLoadingAction(null);
         }
+    };
+
+    const handleOpenCreateNew = () => {
+        setInitialDrinkForForm(null);
+        setCreateModalMode('create');
+        setIsCreateDrinkOpen(true);
+    };
+
+    const handleOpenEdit = (drink: DrinkDetail) => {
+        setInitialDrinkForForm(drink);
+        setCreateModalMode('edit');
+        setIsCreateDrinkOpen(true);
+    };
+
+    const handleOpenDuplicate = (drink: DrinkDetail) => {
+        setInitialDrinkForForm(drink);
+        setCreateModalMode('duplicate');
+        setIsCreateDrinkOpen(true);
     };
 
     return (
@@ -176,7 +198,7 @@ export const CatalogPage: React.FC = () => {
                             <>
                                 <button
                                     type="button"
-                                    onClick={() => setIsCreateDrinkOpen(true)}
+                                    onClick={handleOpenCreateNew}
                                     className="px-3.5 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
                                 >
                                     <Plus className="w-4 h-4 text-red-500" />
@@ -281,6 +303,9 @@ export const CatalogPage: React.FC = () => {
                 isOpen={!!viewedDrink}
                 onClose={() => setViewedDrink(null)}
                 onDrinkNow={(detail) => openModal(detail)}
+                onEdit={handleOpenEdit}
+                onDuplicate={handleOpenDuplicate}
+                onDeleted={() => refetch()}
             />
             <DoseCustomizerModal onSuccessLogged={() => refetch()} />
             <QuickCustomDrinkModal
@@ -289,7 +314,12 @@ export const CatalogPage: React.FC = () => {
             />
             <CreateDrinkModal
                 isOpen={isCreateDrinkOpen}
-                onClose={() => setIsCreateDrinkOpen(false)}
+                onClose={() => {
+                    setIsCreateDrinkOpen(false);
+                    setInitialDrinkForForm(null);
+                }}
+                initialDrink={initialDrinkForForm}
+                mode={createModalMode}
             />
             <CreateIngredientModal
                 isOpen={isCreateIngredientOpen}

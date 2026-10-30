@@ -2,6 +2,7 @@ import { axiosClient } from './axiosClient';
 import type {
     CabinetStatus,
     CreateDrinkRequest,
+    UpdateDrinkRequest,
     CreateIngredientRequest,
     DrinkCatalogItem,
     DrinkDetail,
@@ -39,6 +40,24 @@ export const drinksApi = {
 
     createDrink: async (payload: CreateDrinkRequest): Promise<{ id: string; name: string }> => {
         const { data } = await axiosClient.post<{ id: string; name: string }>('/drinks', payload);
+        return data;
+    },
+
+    updateDrink: async (id: string, payload: UpdateDrinkRequest): Promise<{ id: string; name: string }> => {
+        const { data } = await axiosClient.put<{ id: string; name: string }>(`/drinks/${id}`, payload);
+        return data;
+    },
+
+    deleteDrink: async (id: string): Promise<void> => {
+        await axiosClient.delete(`/drinks/${id}`);
+    },
+
+    uploadDrinkImage: async (file: File): Promise<{ imageUrl: string }> => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const { data } = await axiosClient.post<{ imageUrl: string }>('/drinks/upload-image', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
         return data;
     },
 
@@ -102,14 +121,6 @@ export const drinksApi = {
     }): Promise<Ingredient[]> => {
         const { data } = await axiosClient.get<Ingredient[]>('/ingredients', {
             params,
-        });
-        return data;
-    },
-    uploadDrinkImage: async (file: File): Promise<{ imageUrl: string }> => {
-        const formData = new FormData();
-        formData.append('file', file);
-        const { data } = await axiosClient.post<{ imageUrl: string }>('/drinks/upload-image', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
         });
         return data;
     },

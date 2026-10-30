@@ -17,6 +17,9 @@ import {
     Send,
     Loader2,
     Trash2,
+    Copy,
+    Edit3,
+    Lock,
 } from 'lucide-react';
 
 interface DrinkDetailModalProps {
@@ -24,6 +27,9 @@ interface DrinkDetailModalProps {
     isOpen: boolean;
     onClose: () => void;
     onDrinkNow: (drink: DrinkDetail) => void;
+    onEdit?: (drink: DrinkDetail) => void;
+    onDuplicate?: (drink: DrinkDetail) => void;
+    onDeleted?: () => void;
 }
 
 export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
@@ -31,16 +37,21 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
                                                                       isOpen,
                                                                       onClose,
                                                                       onDrinkNow,
+                                                                      onEdit,
+                                                                      onDuplicate,
+                                                                      onDeleted,
                                                                   }) => {
     const { preferredUnit } = usePreferencesStore();
     const { user } = useAuthStore();
     const queryClient = useQueryClient();
-
     const [rating, setRating] = useState<number>(5);
     const [comment, setComment] = useState('');
     const [reviewsPage, setReviewsPage] = useState(1);
+    const [isDeletingDrink, setIsDeletingDrink] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
     const isAdmin = user?.role === 'Admin' || String(user?.role) === '0';
+    const isBartenderOrAdmin = isAdmin || user?.role === 'Bartender' || String(user?.role) === '1';
 
     const { data: pagedReviews, isLoading: isLoadingReviews } = useQuery({
         queryKey: ['drink-reviews', drink?.id, reviewsPage],
@@ -68,6 +79,23 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
         },
     });
 
+    const handleDeleteDrink = async () => {
+        if (!drink) return;
+        try {
+            setIsDeletingDrink(true);
+            await drinksApi.deleteDrink(drink.id);
+            queryClient.invalidateQueries({ queryKey: ['drinks-catalog-infinite'] });
+            queryClient.invalidateQueries({ queryKey: ['drinks-catalog'] });
+            setShowDeleteConfirm(false);
+            onDeleted?.();
+            onClose();
+        } catch (err) {
+            console.error('Failed to delete drink:', err);
+        } finally {
+            setIsDeletingDrink(false);
+        }
+    };
+
     if (!isOpen || !drink) return null;
 
     return (
@@ -84,6 +112,12 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
                             {drink.glassType && (
                                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-neutral-950 text-neutral-300 border border-neutral-800">
                                     {drink.glassType}
+                                </span>
+                            )}
+                            {drink.isLockedByCreator && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                    <Lock className="w-3 h-3" />
+                                    <span>Private Recipe</span>
                                 </span>
                             )}
                             {drink.averageRating > 0 && (
@@ -130,7 +164,7 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
 
                 {/* Scrollable Body */}
                 <div className="p-5 overflow-y-auto space-y-6 flex-1">
-                    {/* Sincronized Bottle Strength Meter */}
+                    {/* Synchronized Bottle Strength Meter */}
                     <BottleStrengthMeter
                         score1To10={drink.metrics.bottleScore1To10}
                         bottleRating={drink.metrics.bottleVisualRating}
@@ -278,7 +312,6 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
                             <div className="space-y-2.5">
                                 {reviewsList.map((rev) => {
                                     const canDelete = isAdmin || rev.userId === user?.id;
-
                                     return (
                                         <div
                                             key={rev.id}
@@ -316,7 +349,6 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
                                         </div>
                                     );
                                 })}
-
                                 {pagedReviews && (
                                     <PaginationControls
                                         pageNumber={pagedReviews.pageNumber}
@@ -337,28 +369,113 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
                     </div>
                 </div>
 
-                {/* Footer Action */}
-                <div className="p-4 sm:p-5 bg-neutral-900 border-t border-neutral-800 flex items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-5 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs transition-colors"
-                    >
-                        Close
-                    </button>
+                {/* Footer Action Controls: Bartender management + Drink Now */}
+                <div className="p-4 sm:p-5 bg-neutral-900 border-t border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                        {isBartenderOrAdmin && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onClose();
+                                    onDuplicate?.(drink);
+                                }}
+                                className="px-3 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white font-bold text-xs flex items-center gap-1.5 transition-colors"
+                                title="Duplicate and remix this cocktail"
+                            >
+                                <Copy className="w-3.5 h-3.5 text-neutral-400" />
+                                <span>Duplicate</span>
+                            </button>
+                        )}
+
+                        {drink.canEdit && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onClose();
+                                    onEdit?.(drink);
+                                }}
+                                className="px-3 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white font-bold text-xs flex items-center gap-1.5 transition-colors"
+                                title="Edit this cocktail recipe"
+                            >
+                                <Edit3 className="w-3.5 h-3.5 text-neutral-400" />
+                                <span>Edit</span>
+                            </button>
+                        )}
+
+                        {drink.canDelete && (
+                            <button
+                                type="button"
+                                onClick={() => setShowDeleteConfirm(true)}
+                                className="p-2.5 rounded-xl bg-neutral-950 hover:bg-red-950/70 border border-neutral-800 text-neutral-400 hover:text-red-400 transition-colors"
+                                title="Delete cocktail"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+
                     <button
                         type="button"
                         onClick={() => {
                             onClose();
                             onDrinkNow(drink);
                         }}
-                        className="flex-1 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all active:scale-[0.99]"
+                        className="flex-1 sm:flex-initial py-3 px-6 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all active:scale-[0.99]"
                     >
                         <Plus className="w-4 h-4 stroke-[2.5]" />
-                        <span>Drink / Customize Dose</span>
+                        <span>Drink Now</span>
                     </button>
                 </div>
             </div>
+
+            {/* Delete Drink Confirmation Dialog */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md">
+                    <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-red-600/15 border border-red-600/30 flex items-center justify-center text-red-500">
+                                <Trash2 className="w-5 h-5" />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowDeleteConfirm(false)}
+                                className="p-1.5 text-neutral-400 hover:text-white rounded-full bg-neutral-800 transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <div>
+                            <h3 className="text-base font-bold text-white">Delete &quot;{drink.name}&quot;?</h3>
+                            <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                                This cocktail will be permanently removed from the catalog. Any drinks already logged in personal BAC histories will not be lost.
+                            </p>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+                            <button
+                                type="button"
+                                onClick={() => setShowDeleteConfirm(false)}
+                                disabled={isDeletingDrink}
+                                className="px-3.5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 text-xs font-bold transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteDrink}
+                                disabled={isDeletingDrink}
+                                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-red-600/30 transition-all active:scale-95"
+                            >
+                                {isDeletingDrink ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                                <span>Delete Drink</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

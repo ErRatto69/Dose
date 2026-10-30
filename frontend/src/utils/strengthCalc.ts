@@ -4,6 +4,7 @@ export interface ComponentMetricInput {
     category: IngredientCategory;
     amountCl: number;
     abvPercent: number;
+    ingredientName?: string;
 }
 
 export const calculateStrengthMetrics = (components: ComponentMetricInput[]): DrinkMetrics => {
@@ -18,12 +19,27 @@ export const calculateStrengthMetrics = (components: ComponentMetricInput[]): Dr
             pureAlcoholGrams: 0,
             bottleScore1To10: 1,
             bottleVisualRating: 0.5,
+            estimatedKcal: 0,
         };
     }
 
     const pureEtOHCl = liquids.reduce((acc, c) => acc + c.amountCl * (c.abvPercent / 100), 0);
     const finalAbv = Number(((pureEtOHCl / totalVolumeCl) * 100).toFixed(2));
     const pureAlcoholGrams = Number((pureEtOHCl * 10 * 0.789).toFixed(2));
+
+    let sugarCarbsKcal = 0;
+    for (const c of liquids) {
+        const name = (c.ingredientName || '').toLowerCase();
+        const isZero = name.includes('zero') || name.includes('diet') || name.includes('soda') || name.includes('water');
+
+        if (c.category === 'Syrup') sugarCarbsKcal += c.amountCl * 26;
+        else if (c.category === 'Liqueur') sugarCarbsKcal += c.amountCl * 12;
+        else if (c.category === 'Wine') sugarCarbsKcal += c.amountCl * 2.5;
+        else if (c.category === 'Beer') sugarCarbsKcal += c.amountCl * 1.8;
+        else if (c.category === 'Mixer' && !isZero) sugarCarbsKcal += c.amountCl * 4.2;
+    }
+
+    const estimatedKcal = Math.round(pureAlcoholGrams * 7.1 + sugarCarbsKcal);
 
     const normalizedAbv = Math.min(Math.max(finalAbv / 35.0, 0), 1);
     const normalizedGrams = Math.min(Math.max(pureAlcoholGrams / 28.0, 0), 1);
@@ -40,6 +56,7 @@ export const calculateStrengthMetrics = (components: ComponentMetricInput[]): Dr
         pureAlcoholGrams,
         bottleScore1To10: score1To10,
         bottleVisualRating: quarterBottleRating,
+        estimatedKcal,
     };
 };
 
@@ -48,7 +65,8 @@ export const estimateDeltaBac = (
     weightKg: number,
     heightCm: number,
     sex: 'Male' | 'Female',
-    birthYear?: number
+    birthYear?: number,
+    stomachState: 'Empty' | 'LightSnack' | 'FullMeal' = 'LightSnack'
 ): number => {
     if (alcoholGrams <= 0 || weightKg <= 0) return 0;
 
@@ -59,6 +77,8 @@ export const estimateDeltaBac = (
             : -2.097 + 0.1069 * heightCm + 0.2466 * weightKg;
 
     const safeTbw = tbwLiters > 10 ? tbwLiters : weightKg * (sex === 'Male' ? 0.68 : 0.55) * 0.806;
-    const deltaBacGramsPerDl = (alcoholGrams * (0.806 / 10)) / safeTbw;
+
+    const stomachMultiplier = stomachState === 'Empty' ? 1.10 : stomachState === 'FullMeal' ? 0.78 : 0.95;
+    const deltaBacGramsPerDl = ((alcoholGrams * stomachMultiplier) * (0.806 / 10)) / safeTbw;
     return Number((deltaBacGramsPerDl * 10).toFixed(3));
 };

@@ -1,6 +1,6 @@
 export type UserRole = 'Admin' | 'Bartender' | 'Drinker';
-
 export type BiologicalSex = 'Male' | 'Female';
+export type StomachState = 'Empty' | 'LightSnack' | 'FullMeal';
 
 export type IngredientCategory =
     | 'Spirit'
@@ -13,9 +13,7 @@ export type IngredientCategory =
     | 'Pantry';
 
 export type VolumeUnit = 'cl' | 'oz' | 'Cl' | 'Oz';
-
 export type BacSafetyLevel = 'Sober' | 'Safe' | 'Caution' | 'Warning' | 'Critical';
-
 export type MatchType = 'EXACT' | 'MISSING_ONE' | 'MISSING_TWO';
 
 export interface PagedResult<T> {
@@ -64,7 +62,7 @@ export interface CreateRegistrationRequestPayload {
     sex: BiologicalSex;
     birthYear?: number | null;
     requestNote?: string;
-    websiteUrl?: string; // Honeypot field
+    websiteUrl?: string;
 }
 
 export interface UpdateBiometricsRequest {
@@ -145,6 +143,11 @@ export interface DrinkCatalogItem {
     averageRating: number;
     reviewCount: number;
     isPublished: boolean;
+    createdByUserId?: string | null;
+    isLockedByCreator?: boolean;
+    canEdit?: boolean;
+    canDelete?: boolean;
+    estimatedKcal?: number;
 }
 
 export interface DrinkIngredientDetail {
@@ -168,6 +171,7 @@ export interface DrinkMetrics {
     pureAlcoholGrams: number;
     bottleScore1To10: number;
     bottleVisualRating: number;
+    estimatedKcal?: number;
 }
 
 export interface DrinkDetail {
@@ -181,6 +185,10 @@ export interface DrinkDetail {
     averageRating: number;
     reviewCount: number;
     ingredients: DrinkIngredientDetail[];
+    createdByUserId?: string | null;
+    isLockedByCreator?: boolean;
+    canEdit?: boolean;
+    canDelete?: boolean;
 }
 
 export interface ReviewItem {
@@ -224,6 +232,7 @@ export interface LogDrinkRequest {
     consumedAt?: string;
     notes?: string;
     customComponents?: CustomIngredientDose[];
+    stomachState?: StomachState;
 }
 
 export interface BacTimelinePoint {
@@ -249,6 +258,14 @@ export interface DrinkEvent {
     effectiveAbv?: number;
     notes?: string | null;
     components?: LoggedDrinkComponent[];
+    stomachState?: StomachState;
+    totalKcal?: number;
+}
+
+export interface WaterEvent {
+    id: string;
+    amountCl: number;
+    consumedAt: string;
 }
 
 export interface BacStatus {
@@ -262,6 +279,12 @@ export interface BacStatus {
     totalAlcoholGramsLast12h: number;
     activeLogsLast12h: DrinkEvent[];
     timeline: BacTimelinePoint[];
+    hangoverRiskPercent: number;
+    responsibleDrinkingScore: number;
+    totalKcalLast12h: number;
+    totalWaterClLast12h: number;
+    waterLogsCountLast12h: number;
+    activeWaterLogsLast12h?: WaterEvent[];
 }
 
 export interface DrinkLogResponse {
@@ -283,6 +306,7 @@ export interface UpdateDrinkLogRequest {
     consumedAt?: string;
     notes?: string;
     components?: CustomIngredientDose[];
+    stomachState?: StomachState;
 }
 
 export interface RankingTier {
@@ -331,6 +355,7 @@ export interface LogCustomDrinkRequest {
     consumedAt?: string;
     notes?: string;
     components: CustomIngredientDose[];
+    stomachState?: StomachState;
 }
 
 export interface CreateIngredientRequest {
@@ -356,6 +381,17 @@ export interface CreateDrinkRequest {
     description: string;
     glassType?: string;
     imageUrl?: string;
+    isLockedByCreator?: boolean;
+    preparationSteps: string[];
+    ingredients: CreateDrinkIngredientInput[];
+}
+
+export interface UpdateDrinkRequest {
+    name: string;
+    description: string;
+    glassType?: string;
+    imageUrl?: string;
+    isLockedByCreator?: boolean;
     preparationSteps: string[];
     ingredients: CreateDrinkIngredientInput[];
 }

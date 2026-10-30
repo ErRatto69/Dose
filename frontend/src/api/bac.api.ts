@@ -28,6 +28,10 @@ export const bacApi = {
         return data;
     },
 
+    logWater: async (amountCl: number = 25, consumedAt?: string): Promise<void> => {
+        await axiosClient.post('/drinks/water/log', { amountCl, consumedAt });
+    },
+
     updateDrinkLog: async (
         logId: string,
         payload: UpdateDrinkLogRequest
@@ -60,5 +64,16 @@ export const bacApi = {
             { params }
         );
         return data;
+    },
+    updateWaterLog: async (
+        waterLogId: string,
+        amountCl: number,
+        consumedAt?: string
+    ): Promise<void> => {
+        await axiosClient.put(`/drinks/water/logs/${waterLogId}`, { amountCl, consumedAt });
+    },
+
+    deleteWaterLog: async (waterLogId: string): Promise<void> => {
+        await axiosClient.delete(`/drinks/water/logs/${waterLogId}`);
     },
 };

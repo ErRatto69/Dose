@@ -6,6 +6,7 @@ import { bacApi } from '@/api/bac.api';
 import { usersApi } from '@/api/users.api';
 import { SafetyBanner } from '@/components/safety/SafetyBanner';
 import { QuickCustomDrinkModal } from '@/components/drink/QuickCustomDrinkModal';
+import { LogWaterModal } from '@/components/safety/LogWaterModal';
 import {
     Wine,
     Sparkles,
@@ -16,11 +17,13 @@ import {
     UserCircle,
     Zap,
     MessageSquare,
+    Droplets,
 } from 'lucide-react';
 
 export const Layout: React.FC = () => {
     const { user } = useAuthStore();
     const [isQuickPourOpen, setIsQuickPourOpen] = useState(false);
+    const [isWaterModalOpen, setIsWaterModalOpen] = useState(false);
     const [iconError, setIconError] = useState(false);
 
     const appIconUrl = `${import.meta.env.BASE_URL}icons/icon-192.png`;
@@ -57,12 +60,16 @@ export const Layout: React.FC = () => {
     ];
 
     const userInitial = user?.username ? user.username.charAt(0).toUpperCase() : 'U';
+    const totalWaterCl = bacData?.totalWaterClLast12h ?? 0;
+    const waterDisplay = totalWaterCl >= 100
+        ? `${(totalWaterCl / 100).toFixed(1)} L`
+        : `${Math.round(totalWaterCl)} cl`;
 
     return (
         <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col">
             {/* TopBar */}
             <header className="fixed top-0 left-0 right-0 z-40 h-16 bg-neutral-950/95 border-b border-neutral-800/90 backdrop-blur-md">
-                <div className="max-w-7xl mx-auto h-full px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-3">
+                <div className="max-w-7xl mx-auto h-full px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-2 sm:gap-3">
                     {/* Brand Logo */}
                     <NavLink to="/drinks" className="flex items-center gap-2.5 shrink-0">
                         {!iconError ? (
@@ -103,12 +110,25 @@ export const Layout: React.FC = () => {
                         ))}
                     </nav>
 
-                    {/* Right Controls: Quick Pour + User Pill */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    {/* Right Controls: Log Water Modal Trigger + Quick Pour + User Pill */}
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => setIsWaterModalOpen(true)}
+                            className="px-2.5 sm:px-3 py-2 rounded-xl bg-sky-950/70 hover:bg-sky-900/90 border border-sky-600/40 hover:border-sky-500 text-sky-200 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-sm"
+                            title="Log water hydration"
+                        >
+                            <Droplets className="w-3.5 h-3.5 text-sky-400 fill-sky-400" />
+                            <span className="hidden sm:inline">Water</span>
+                            <span className="px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-300 text-[10px] font-mono font-bold">
+                                {waterDisplay}
+                            </span>
+                        </button>
+
                         <button
                             type="button"
                             onClick={() => setIsQuickPourOpen(true)}
-                            className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-red-600/30 border border-red-500/50 transition-all active:scale-95"
+                            className="px-3 sm:px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-red-600/30 border border-red-500/50 transition-all active:scale-95"
                         >
                             <Zap className="w-4 h-4 fill-white" />
                             <span>Quick Pour</span>
@@ -189,6 +209,11 @@ export const Layout: React.FC = () => {
             <QuickCustomDrinkModal
                 isOpen={isQuickPourOpen}
                 onClose={() => setIsQuickPourOpen(false)}
+            />
+
+            <LogWaterModal
+                isOpen={isWaterModalOpen}
+                onClose={() => setIsWaterModalOpen(false)}
             />
         </div>
     );

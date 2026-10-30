@@ -9,6 +9,7 @@ import { BottleStrengthMeter } from './BottleStrengthMeter';
 import { RecentTimePicker } from '@/components/common/RecentTimePicker';
 import { bacApi } from '@/api/bac.api';
 import { drinksApi } from '@/api/drinks.api';
+import type { StomachState } from '@/types';
 import {
     X,
     Minus,
@@ -19,6 +20,7 @@ import {
     Search,
     RefreshCw,
     AlertTriangle,
+    Flame,
 } from 'lucide-react';
 import { matchesSearchQuery } from '@/utils/textSearch';
 
@@ -49,6 +51,7 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
     const { user } = useAuthStore();
     const queryClient = useQueryClient();
 
+    const [stomachState, setStomachState] = useState<StomachState>('LightSnack');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showAddIngredient, setShowAddIngredient] = useState(false);
     const [ingredientSearch, setIngredientSearch] = useState('');
@@ -74,6 +77,7 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                 category: c.category,
                 amountCl: c.amountCl,
                 abvPercent: c.abv,
+                ingredientName: c.name,
             }))
         );
     }, [components]);
@@ -86,9 +90,10 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
             user.weightKg,
             user.heightCm,
             normalizedSex,
-            user.birthYear ?? undefined
+            user.birthYear ?? undefined,
+            stomachState
         );
-    }, [metrics.pureAlcoholGrams, user]);
+    }, [metrics.pureAlcoholGrams, user, stomachState]);
 
     if (!isOpen || !drink) return null;
 
@@ -110,6 +115,7 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
             await bacApi.logDrink(drink.id, {
                 consumedAt,
                 notes: notes.trim() || undefined,
+                stomachState,
                 customComponents: components
                     .filter((c) => c.amountCl > 0)
                     .map((c) => ({
@@ -154,8 +160,8 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                     </button>
                 </div>
 
-                {/* Real-time Telemetry Bar */}
-                <div className="px-5 py-3 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between text-xs">
+                {/* Real-time Telemetry Bar (Volume, Alcohol, Kcal, Delta BAC) */}
+                <div className="px-5 py-3 bg-neutral-950 border-b border-neutral-800 grid grid-cols-4 gap-2 text-xs">
                     <div>
                         <span className="text-neutral-400 block">Total Volume</span>
                         <strong className="text-neutral-200 text-sm font-mono">
@@ -168,8 +174,17 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                             {metrics.pureAlcoholGrams.toFixed(1)}g
                         </strong>
                     </div>
+                    <div className="text-center">
+                        <span className="text-neutral-400 block flex items-center justify-center gap-1">
+                            <Flame className="w-3 h-3 text-amber-500" />
+                            Calories
+                        </span>
+                        <strong className="text-amber-400 text-sm font-mono">
+                            ~{metrics.estimatedKcal} kcal
+                        </strong>
+                    </div>
                     <div className="text-right">
-                        <span className="text-neutral-400 block">Estimated +BAC</span>
+                        <span className="text-neutral-400 block">Est. +BAC</span>
                         <strong className="text-red-400 text-sm font-mono">
                             +{deltaBacEstimate.toFixed(2)} g/L
                         </strong>
@@ -185,7 +200,37 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                         compact
                     />
 
-                    {/* Quick Multiplier Presets */}
+                    {/* Stomach State Metabolic Selector */}
+                    <div>
+                        <label className="text-xs font-semibold text-neutral-300 block mb-2">
+                            Stomach Fullness (Metabolic Absorption)
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {(
+                                [
+                                    { value: 'Empty', label: 'Empty (Fast)', desc: '+10% peak' },
+                                    { value: 'LightSnack', label: 'Light Snack', desc: 'Standard' },
+                                    { value: 'FullMeal', label: 'Full Meal', desc: '-22% peak' },
+                                ] as const
+                            ).map((item) => (
+                                <button
+                                    key={item.value}
+                                    type="button"
+                                    onClick={() => setStomachState(item.value)}
+                                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-0.5 ${
+                                        stomachState === item.value
+                                            ? 'bg-red-600 text-white border-red-500 shadow-sm shadow-red-600/30'
+                                            : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
+                                    }`}
+                                >
+                                    <span>{item.label}</span>
+                                    <span className="text-[10px] font-normal opacity-80">{item.desc}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Quick Multipliers */}
                     <div>
                         <label className="text-xs font-semibold text-neutral-300 block mb-2">
                             Quick Multipliers (Alcoholic Components)
@@ -226,7 +271,6 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                             </button>
                         </div>
 
-                        {/* Add Extra Ingredient Drawer */}
                         {showAddIngredient && (
                             <div className="mb-3 p-3.5 rounded-2xl bg-neutral-950 border border-red-600/40 space-y-2.5">
                                 <div className="relative">
@@ -272,7 +316,6 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                         <div className="space-y-2.5">
                             {components.map((comp) => {
                                 const alternatives = getMatchingAlternatives(comp.subCategory, comp.flavor);
-
                                 return (
                                     <div
                                         key={comp.rowId}
@@ -361,7 +404,7 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                         </div>
                     </div>
 
-                    {/* Integrated Alarm-Style Roller Time Picker */}
+                    {/* Integrated Time Picker */}
                     <RecentTimePicker
                         value={customConsumedAt}
                         onChange={(isoStr) => setCustomConsumedAt(isoStr)}

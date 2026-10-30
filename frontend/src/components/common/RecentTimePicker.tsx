@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Clock, Check, AlertCircle, RotateCcw } from 'lucide-react';
+import { Clock, Check, AlertCircle, RotateCcw, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface RecentTimePickerProps {
-    value?: string; // ISO string or local date string
+    value?: string;
     onChange: (isoString: string) => void;
     isNow?: boolean;
     onToggleNow?: (isNow: boolean) => void;
@@ -10,31 +10,23 @@ interface RecentTimePickerProps {
     label?: string;
 }
 
-const ITEM_HEIGHT = 40;
+const ITEM_HEIGHT = 44;
 const VISIBLE_ITEMS = 3;
-const WHEEL_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS; // 120px
-
+const WHEEL_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS; // 132px
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
-
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/**
- * Automatically resolves HH:mm into the 12-hour past window.
- * Seamlessly handles overnight, cross-month, and cross-year boundaries.
- */
 const resolvePast12HourDate = (hour: number, minute: number, refDate: Date = new Date()) => {
     const cToday = new Date(refDate);
     cToday.setHours(hour, minute, 0, 0);
-
     const cYesterday = new Date(cToday);
     cYesterday.setDate(cYesterday.getDate() - 1);
-
     const cTomorrow = new Date(cToday);
     cTomorrow.setDate(cTomorrow.getDate() + 1);
 
     const twelveHoursAgoMs = refDate.getTime() - 12 * 60 * 60 * 1000;
-    const maxFutureMs = refDate.getTime() + 5 * 60 * 1000; // 5-minute clock drift allowance
+    const maxFutureMs = refDate.getTime() + 5 * 60 * 1000;
 
     const candidates = [cToday, cYesterday, cTomorrow];
     const match = candidates.find(
@@ -45,14 +37,13 @@ const resolvePast12HourDate = (hour: number, minute: number, refDate: Date = new
         return {
             date: cToday,
             isValid: false,
-            label: 'Selected time is older than 12 hours',
+            label: 'Selected time is outside the 12-hour window',
         };
     }
 
     const diffMinutes = Math.max(0, Math.round((refDate.getTime() - match.getTime()) / 60000));
     const isToday = match.getDate() === refDate.getDate() && match.getMonth() === refDate.getMonth();
     const dayLabel = isToday ? 'Today' : 'Yesterday';
-
     let agoText = '';
     if (diffMinutes < 1) agoText = 'Just now';
     else if (diffMinutes < 60) agoText = `${diffMinutes}m ago`;
@@ -79,7 +70,6 @@ interface WheelColumnProps {
 const WheelColumn: React.FC<WheelColumnProps> = ({ items, value, onChange, label }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Keep the wheel centered on the active item without disrupting active scrolls
     useEffect(() => {
         if (containerRef.current) {
             const targetScroll = items.indexOf(value) * ITEM_HEIGHT;
@@ -89,46 +79,83 @@ const WheelColumn: React.FC<WheelColumnProps> = ({ items, value, onChange, label
         }
     }, [value, items]);
 
+    const step = (delta: number) => {
+        const currentIndex = items.indexOf(value);
+        const newIndex = Math.max(0, Math.min(items.length - 1, currentIndex + delta));
+        if (newIndex !== currentIndex) {
+            onChange(items[newIndex]);
+            if (containerRef.current) {
+                containerRef.current.scrollTo({
+                    top: newIndex * ITEM_HEIGHT,
+                    behavior: 'smooth',
+                });
+            }
+        }
+    };
+
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         const scrollTop = e.currentTarget.scrollTop;
         const index = Math.round(scrollTop / ITEM_HEIGHT);
         const clampedIndex = Math.max(0, Math.min(items.length - 1, index));
         const activeItem = items[clampedIndex];
-
         if (activeItem !== undefined && activeItem !== value) {
             onChange(activeItem);
         }
     };
 
     return (
-        <div className="flex-1 flex flex-col items-center select-none">
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
-                {label}
-            </span>
+        <div className="flex-1 flex flex-col items-center">
+            {/* Column Header: Label + Desktop Stepper Chevrons */}
+            <div className="w-full flex items-center justify-between mb-1.5 px-1">
+                <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+                    {label}
+                </span>
+                <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        onClick={() => step(-1)}
+                        className="w-6 h-6 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-white flex items-center justify-center transition-all active:scale-95"
+                        title={`Previous ${label}`}
+                    >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => step(1)}
+                        className="w-6 h-6 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-white flex items-center justify-center transition-all active:scale-95"
+                        title={`Next ${label}`}
+                    >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            </div>
 
+            {/* Roller Box */}
             <div className="relative w-full overflow-hidden rounded-2xl bg-neutral-950 border border-neutral-800">
                 {/* Center Highlight Selection Bar */}
                 <div
-                    className="absolute left-2 right-2 pointer-events-none rounded-xl bg-red-600/15 border-y border-red-500/40"
+                    className="absolute left-1.5 right-1.5 pointer-events-none rounded-xl bg-red-600/15 border border-red-500/40"
                     style={{
                         top: ITEM_HEIGHT,
                         height: ITEM_HEIGHT,
                     }}
                 />
 
-                {/* Top and Bottom Vignette Fades for 3D Roller Curvature */}
+                {/* Top and Bottom Vignette Fades */}
                 <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-neutral-950 via-neutral-950/80 to-transparent pointer-events-none z-10" />
                 <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent pointer-events-none z-10" />
 
-                {/* Magnetic Snap Wheel Container */}
+                {/* Scroll Container with Strict Cross-Browser Scrollbar Suppression */}
                 <div
                     ref={containerRef}
                     onScroll={handleScroll}
-                    className="overflow-y-auto no-scrollbar snap-y snap-mandatory"
+                    className="overflow-y-auto overflow-x-hidden snap-y snap-mandatory select-none w-full [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                     style={{
                         height: WHEEL_HEIGHT,
                         paddingTop: ITEM_HEIGHT,
                         paddingBottom: ITEM_HEIGHT,
+                        scrollbarWidth: 'none',
+                        msOverflowStyle: 'none',
                     }}
                 >
                     {items.map((item, index) => {
@@ -143,10 +170,11 @@ const WheelColumn: React.FC<WheelColumnProps> = ({ items, value, onChange, label
                                         behavior: 'smooth',
                                     });
                                 }}
-                                className={`h-[40px] snap-center flex items-center justify-center cursor-pointer transition-all duration-150 ${
+                                style={{ height: ITEM_HEIGHT }}
+                                className={`snap-center flex items-center justify-center cursor-pointer transition-colors duration-150 ${
                                     isSelected
-                                        ? 'text-white font-mono font-black text-xl scale-110'
-                                        : 'text-neutral-500 font-mono text-sm hover:text-neutral-300'
+                                        ? 'text-white font-mono font-black text-2xl'
+                                        : 'text-neutral-500 font-mono text-base hover:text-neutral-300'
                                 }`}
                             >
                                 {pad(item)}
@@ -254,11 +282,11 @@ export const RecentTimePicker: React.FC<RecentTimePickerProps> = ({
                 </div>
             )}
 
-            {/* Alarm Clock Roller Wheel (No Slider) */}
+            {/* Roller Wheels Area */}
             {(!showNowOption || !isNow) && (
                 <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3 animate-in fade-in zoom-in-95 duration-150">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs text-neutral-400">Scroll to set time:</span>
+                        <span className="text-xs text-neutral-400">Set hour and minute:</span>
                         <button
                             type="button"
                             onClick={handleSetToCurrentTime}
@@ -270,15 +298,23 @@ export const RecentTimePicker: React.FC<RecentTimePickerProps> = ({
                         </button>
                     </div>
 
-                    {/* Hours and Minutes Roller Columns */}
-                    <div className="flex items-center gap-3">
+                    {/* Columns + Colon Aligned at the Selection Line */}
+                    <div className="flex items-end gap-3">
                         <WheelColumn
                             items={HOURS}
                             value={selectedHour}
                             onChange={(h) => handleTimeChange(h, selectedMinute)}
                             label="Hours"
                         />
-                        <div className="font-mono text-2xl font-black text-red-500 pt-5">:</div>
+                        <div
+                            className="flex items-center justify-center font-mono font-black text-2xl text-red-500 select-none pb-0.5"
+                            style={{
+                                height: ITEM_HEIGHT,
+                                marginBottom: ITEM_HEIGHT,
+                            }}
+                        >
+                            :
+                        </div>
                         <WheelColumn
                             items={MINUTES}
                             value={selectedMinute}
@@ -287,7 +323,7 @@ export const RecentTimePicker: React.FC<RecentTimePickerProps> = ({
                         />
                     </div>
 
-                    {/* Auto-resolved Date & Time Feedback Badge */}
+                    {/* Auto-resolved Date/Time Feedback */}
                     {timeStatus.isValid ? (
                         <div className="flex items-center justify-between text-xs px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800">
                             <span className="text-neutral-400">Recorded for:</span>
