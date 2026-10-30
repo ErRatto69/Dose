@@ -5,6 +5,7 @@ using Dose.Infrastructure.Persistence.Seeding;
 using Dose.Infrastructure.Security;
 using Dose.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,7 +17,7 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // PostgreSQL DbContext with connection string from environment/appsettings
+        // PostgreSQL DbContext con connection string da configuration/environment
         string connectionString = configuration.GetConnectionString("DefaultConnection")
                                   ?? "Host=localhost;Port=5432;Database=dose_prod;Username=dose_admin;Password=dose_pass";
 
@@ -27,6 +28,8 @@ public static class DependencyInjection
                 npgsqlOptions.MigrationsAssembly(typeof(DoseDbContext).Assembly.FullName);
                 npgsqlOptions.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null);
             });
+            // Ignora il warning dei cambi modello non inclusi nelle migrazioni CLI (gestiti dal DatabaseSeeder)
+            options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<DoseDbContext>());

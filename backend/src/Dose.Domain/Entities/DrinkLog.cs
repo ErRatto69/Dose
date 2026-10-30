@@ -1,4 +1,5 @@
 ﻿using Dose.Domain.Common;
+using Dose.Domain.Enums;
 using Dose.Domain.ValueObjects;
 
 namespace Dose.Domain.Entities;
@@ -20,6 +21,8 @@ public class DrinkLog : BaseEntity
     public decimal TotalPureAlcoholCl { get; private set; }
     public decimal TotalPureAlcoholGrams { get; private set; }
     public string? Notes { get; private set; }
+    public StomachState StomachState { get; private set; } = StomachState.LightSnack;
+    public int TotalKcal { get; private set; } = 0;
     
     public virtual ICollection<DrinkLogItem> Items { get; private set; } = new List<DrinkLogItem>();
 
@@ -34,7 +37,9 @@ public class DrinkLog : BaseEntity
         decimal totalVolumeCl,
         decimal effectiveAbv,
         PureAlcohol pureAlcohol,
-        string? notes = null)
+        string? notes = null,
+        StomachState stomachState = StomachState.LightSnack,
+        int totalKcal = 0)
     {
         if (string.IsNullOrWhiteSpace(drinkNameSnapshot))
             throw new DomainException("The registered drink name cannot be empty.");
@@ -49,6 +54,8 @@ public class DrinkLog : BaseEntity
         TotalPureAlcoholCl = pureAlcohol.PureAlcoholCl;
         TotalPureAlcoholGrams = pureAlcohol.Grams;
         Notes = notes?.Trim();
+        StomachState = stomachState;
+        TotalKcal = totalKcal;
     }
 
     public void UpdateLogDetails(
@@ -58,7 +65,9 @@ public class DrinkLog : BaseEntity
         decimal totalVolumeCl,
         decimal effectiveAbv,
         PureAlcohol pureAlcohol,
-        string? notes)
+        string? notes,
+        StomachState stomachState = StomachState.LightSnack,
+        int totalKcal = 0)
     {
         if (string.IsNullOrWhiteSpace(drinkNameSnapshot))
             throw new DomainException("The registered drink name cannot be empty.");
@@ -71,16 +80,11 @@ public class DrinkLog : BaseEntity
         TotalPureAlcoholCl = pureAlcohol.PureAlcoholCl;
         TotalPureAlcoholGrams = pureAlcohol.Grams;
         Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        StomachState = stomachState;
+        TotalKcal = totalKcal;
         UpdateTimestamp();
     }
 
-    public void ClearItems()
-    {
-        Items.Clear();
-    }
-
-    public void AddItem(DrinkLogItem item)
-    {
-        Items.Add(item);
-    }
+    public void ClearItems() => Items.Clear();
+    public void AddItem(DrinkLogItem item) => Items.Add(item);
 }

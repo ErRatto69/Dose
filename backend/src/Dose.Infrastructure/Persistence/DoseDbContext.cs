@@ -16,6 +16,7 @@ public class DoseDbContext(DbContextOptions<DoseDbContext> options)
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<DrinkLog> DrinkLogs => Set<DrinkLog>();
     public DbSet<DrinkLogItem> DrinkLogItems => Set<DrinkLogItem>();
+    public DbSet<WaterLog> WaterLogs => Set<WaterLog>();
     public DbSet<RankingTier> RankingTiers => Set<RankingTier>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

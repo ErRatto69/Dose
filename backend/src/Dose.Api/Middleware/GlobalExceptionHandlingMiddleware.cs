@@ -2,6 +2,7 @@
 using Dose.Application.Common.Exceptions;
 using Dose.Domain.Common;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Dose.Api.Middleware;
 
@@ -27,6 +28,15 @@ public class GlobalExceptionHandlingMiddleware(RequestDelegate next, ILogger<Glo
         {
             logger.LogWarning("Domain rule violation on {Path}: {Message}", context.Request.Path, domEx.Message);
             await HandleExceptionAsync(context, domEx);
+        }
+        catch (DbUpdateException dbEx) when (dbEx.InnerException is Npgsql.PostgresException { SqlState: "23505" } pgEx)
+        {
+            logger.LogWarning("Unique constraint violation on {Path}: {Detail}", context.Request.Path, pgEx.Detail);
+            var valEx = new ValidationException(
+            [
+                new FluentValidation.Results.ValidationFailure("Name", "A record with this name already exists in the database.")
+            ]);
+            await HandleExceptionAsync(context, valEx);
         }
         catch (Exception ex)
         {

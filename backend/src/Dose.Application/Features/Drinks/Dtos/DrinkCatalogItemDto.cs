@@ -11,5 +11,10 @@ public record DrinkCatalogItemDto(
     int BottleScore1To10,
     double AverageRating,
     int ReviewCount,
-    bool IsPublished
+    bool IsPublished,
+    Guid? CreatedByUserId = null,
+    bool IsLockedByCreator = false,
+    bool CanEdit = false,
+    bool CanDelete = false,
+    int EstimatedKcal = 0
 );

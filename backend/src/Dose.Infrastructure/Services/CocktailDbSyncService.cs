@@ -113,10 +113,11 @@ public partial class CocktailDbSyncService(
                                 var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
 
                                 string drinkName = apiDrink.StrDrink.Trim();
+                                // Modifica all'interno di ExecuteHarvestingLoopAsync():
                                 var existingDrink = await context.Drinks
                                     .Include(d => d.DrinkIngredients)
-                                        .ThenInclude(di => di.Ingredient)
-                                    .FirstOrDefaultAsync(d => d.Name.ToLower() == drinkName.ToLower());
+                                    .ThenInclude(di => di.Ingredient)
+                                    .FirstOrDefaultAsync(d => d.Name.ToLower() == drinkName.ToLower() && d.CreatedByUserId == null);
 
                                 string? storedLocalImagePath = null;
                                 if (!string.IsNullOrWhiteSpace(apiDrink.StrDrinkThumb))

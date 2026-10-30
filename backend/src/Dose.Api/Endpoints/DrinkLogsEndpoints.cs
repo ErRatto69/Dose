@@ -5,6 +5,7 @@ using Dose.Application.Features.DrinkLogs.Dtos;
 using Dose.Application.Services;
 using Dose.Domain.Common;
 using Dose.Domain.Entities;
+using Dose.Domain.Enums;
 using Dose.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 
@@ -39,11 +40,11 @@ public class DrinkLogsEndpoints : IEndpoint
 
             DateTimeOffset now = dateTimeProvider.UtcNow;
             DateTimeOffset consumptionTime = request.ConsumedAt ?? now;
+
             if (consumptionTime < now.AddHours(-12) || consumptionTime > now.AddMinutes(5))
                 throw new DomainException("Consumption time must be within the last 12 hours.");
 
             bool isCustomized = request.CustomComponents is not null && request.CustomComponents.Count > 0;
-
             var logItemsToCreate = new List<DrinkLogItem>();
             var strengthInputs = new List<RecipeComponentInput>();
 
@@ -72,7 +73,7 @@ public class DrinkLogsEndpoints : IEndpoint
                         pureAlcoholGrams
                     ));
 
-                    strengthInputs.Add(new RecipeComponentInput(ing.Category, component.AmountCl, ing.Abv));
+                    strengthInputs.Add(new RecipeComponentInput(ing.Category, component.AmountCl, ing.Abv, ing.Name));
                 }
             }
             else
@@ -92,7 +93,7 @@ public class DrinkLogsEndpoints : IEndpoint
                         pureAlcoholGrams
                     ));
 
-                    strengthInputs.Add(new RecipeComponentInput(di.Ingredient.Category, di.AmountCl, di.Ingredient.Abv));
+                    strengthInputs.Add(new RecipeComponentInput(di.Ingredient.Category, di.AmountCl, di.Ingredient.Abv, di.Ingredient.Name));
                 }
             }
 
@@ -108,7 +109,9 @@ public class DrinkLogsEndpoints : IEndpoint
                 metrics.TotalLiquidVolumeCl,
                 metrics.FinalAbvPercent,
                 metrics.PureAlcohol,
-                request.Notes
+                request.Notes,
+                stomachState: request.StomachState ?? StomachState.LightSnack,
+                totalKcal: metrics.EstimatedKcal
             );
 
             foreach (var item in logItemsToCreate)
@@ -135,7 +138,7 @@ public class DrinkLogsEndpoints : IEndpoint
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        // 2. Log a Quick Pour / Shot / Custom Drink
+        // 2. Log a Quick Pour / Shot / Custom Mix
         group.MapPost("/custom/log", async (
             LogCustomDrinkRequestDto request,
             ICurrentUserService currentUserService,
@@ -154,6 +157,7 @@ public class DrinkLogsEndpoints : IEndpoint
 
             DateTimeOffset now = dateTimeProvider.UtcNow;
             DateTimeOffset consumptionTime = request.ConsumedAt ?? now;
+
             if (consumptionTime < now.AddHours(-12) || consumptionTime > now.AddMinutes(5))
                 throw new DomainException("Consumption time must be within the last 12 hours.");
 
@@ -184,7 +188,7 @@ public class DrinkLogsEndpoints : IEndpoint
                     pureAlcoholGrams
                 ));
 
-                strengthInputs.Add(new RecipeComponentInput(ing.Category, comp.AmountCl, ing.Abv));
+                strengthInputs.Add(new RecipeComponentInput(ing.Category, comp.AmountCl, ing.Abv, ing.Name));
                 usedNames.Add(ing.Name);
             }
 
@@ -192,7 +196,6 @@ public class DrinkLogsEndpoints : IEndpoint
                 throw new DomainException("Total volume must be greater than zero.");
 
             var metrics = strengthCalculator.CalculateMetrics(strengthInputs);
-
             string generatedName = !string.IsNullOrWhiteSpace(request.CustomName)
                 ? request.CustomName.Trim()
                 : usedNames.Count == 1
@@ -211,7 +214,9 @@ public class DrinkLogsEndpoints : IEndpoint
                 metrics.TotalLiquidVolumeCl,
                 metrics.FinalAbvPercent,
                 metrics.PureAlcohol,
-                request.Notes
+                request.Notes,
+                stomachState: request.StomachState ?? StomachState.LightSnack,
+                totalKcal: metrics.EstimatedKcal
             );
 
             foreach (var item in logItemsToCreate)
@@ -238,7 +243,27 @@ public class DrinkLogsEndpoints : IEndpoint
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        // 3. Edit a Drink Log from the last 12 hours
+        // 3. Log water intake (custom volume between 5 and 300 cl)
+        group.MapPost("/water/log", async (
+            LogWaterRequestDto? request,
+            ICurrentUserService currentUserService,
+            IApplicationDbContext context,
+            IDateTimeProvider dateTimeProvider,
+            CancellationToken ct) =>
+        {
+            var userId = currentUserService.UserId ?? throw new UnauthorizedException();
+            decimal amountCl = Math.Clamp(request?.AmountCl ?? 25.0m, 5.0m, 300.0m);
+            DateTimeOffset consumedAt = request?.ConsumedAt ?? dateTimeProvider.UtcNow;
+
+            var waterLog = new WaterLog(userId, amountCl, consumedAt);
+            await context.WaterLogs.AddAsync(waterLog, ct);
+            await context.SaveChangesAsync(ct);
+
+            return Results.Ok(new { waterLog.Id, waterLog.AmountCl, waterLog.ConsumedAt });
+        })
+        .RequireAuthorization("RequireAuthenticatedDrinker");
+
+        // 4. Update an existing log within 12h
         group.MapPut("/logs/{logId:guid}", async (
             Guid logId,
             UpdateDrinkLogRequestDto request,
@@ -253,7 +278,6 @@ public class DrinkLogsEndpoints : IEndpoint
             var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
                 ?? throw new NotFoundException(nameof(User), userId);
 
-            // Carichiamo SOLO il drinkLog senza includere Items nel tracking per evitare conflitti di cancellazione
             var drinkLog = await context.DrinkLogs
                 .FirstOrDefaultAsync(l => l.Id == logId && l.UserId == userId, ct)
                 ?? throw new NotFoundException(nameof(DrinkLog), logId);
@@ -269,6 +293,8 @@ public class DrinkLogsEndpoints : IEndpoint
             string updatedName = !string.IsNullOrWhiteSpace(request.CustomName)
                 ? request.CustomName.Trim()
                 : drinkLog.DrinkNameSnapshot;
+
+            StomachState updatedStomach = request.StomachState ?? drinkLog.StomachState;
 
             if (request.Components != null && request.Components.Count > 0)
             {
@@ -299,7 +325,7 @@ public class DrinkLogsEndpoints : IEndpoint
                         pureAlcoholGrams
                     ));
 
-                    strengthInputs.Add(new RecipeComponentInput(ing.Category, comp.AmountCl, ing.Abv));
+                    strengthInputs.Add(new RecipeComponentInput(ing.Category, comp.AmountCl, ing.Abv, ing.Name));
                 }
 
                 if (newItems.Count == 0)
@@ -307,7 +333,6 @@ public class DrinkLogsEndpoints : IEndpoint
 
                 var metrics = strengthCalculator.CalculateMetrics(strengthInputs);
 
-                // Pulizia sicura direttamente su PostgreSQL senza collisioni nel ChangeTracker
                 await context.DrinkLogItems
                     .Where(i => i.DrinkLogId == logId)
                     .ExecuteDeleteAsync(ct);
@@ -319,7 +344,9 @@ public class DrinkLogsEndpoints : IEndpoint
                     metrics.TotalLiquidVolumeCl,
                     metrics.FinalAbvPercent,
                     metrics.PureAlcohol,
-                    request.Notes
+                    request.Notes,
+                    updatedStomach,
+                    metrics.EstimatedKcal
                 );
 
                 await context.DrinkLogItems.AddRangeAsync(newItems, ct);
@@ -327,7 +354,6 @@ public class DrinkLogsEndpoints : IEndpoint
             else
             {
                 var currentPureAlcohol = PureAlcohol.FromGrams(drinkLog.TotalPureAlcoholGrams);
-
                 drinkLog.UpdateLogDetails(
                     updatedName,
                     drinkLog.IsCustomized,
@@ -335,7 +361,9 @@ public class DrinkLogsEndpoints : IEndpoint
                     drinkLog.TotalVolumeCl,
                     drinkLog.EffectiveAbv,
                     currentPureAlcohol,
-                    request.Notes
+                    request.Notes,
+                    updatedStomach,
+                    drinkLog.TotalKcal
                 );
             }
 
@@ -359,7 +387,7 @@ public class DrinkLogsEndpoints : IEndpoint
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        // 4. Delete a Drink Log from the last 12 hours
+        // 5. Delete a drink log within 12h
         group.MapDelete("/logs/{logId:guid}", async (
             Guid logId,
             ICurrentUserService currentUserService,
@@ -368,7 +396,6 @@ public class DrinkLogsEndpoints : IEndpoint
             CancellationToken ct) =>
         {
             var userId = currentUserService.UserId ?? throw new UnauthorizedException();
-
             var drinkLog = await context.DrinkLogs
                 .FirstOrDefaultAsync(l => l.Id == logId && l.UserId == userId, ct)
                 ?? throw new NotFoundException(nameof(DrinkLog), logId);
@@ -377,6 +404,59 @@ public class DrinkLogsEndpoints : IEndpoint
                 throw new DomainException("Only drinks logged within the last 12 hours can be removed.");
 
             context.DrinkLogs.Remove(drinkLog);
+            await context.SaveChangesAsync(ct);
+
+            return Results.NoContent();
+        })
+        .RequireAuthorization("RequireAuthenticatedDrinker");
+        
+        // Update a water log within 12h
+        group.MapPut("/water/logs/{id:guid}", async (
+            Guid id,
+            UpdateWaterLogRequestDto request,
+            ICurrentUserService currentUserService,
+            IApplicationDbContext context,
+            IDateTimeProvider dateTimeProvider,
+            CancellationToken ct) =>
+        {
+            var userId = currentUserService.UserId ?? throw new UnauthorizedException();
+            var waterLog = await context.WaterLogs
+                .FirstOrDefaultAsync(w => w.Id == id && w.UserId == userId, ct)
+                ?? throw new NotFoundException(nameof(WaterLog), id);
+
+            DateTimeOffset now = dateTimeProvider.UtcNow;
+            if (waterLog.ConsumedAt < now.AddHours(-12))
+                throw new DomainException("Only water logged within the last 12 hours can be modified.");
+
+            DateTimeOffset updatedConsumedAt = request.ConsumedAt ?? waterLog.ConsumedAt;
+            if (updatedConsumedAt < now.AddHours(-12) || updatedConsumedAt > now.AddMinutes(5))
+                throw new DomainException("Consumption time must be within the last 12 hours.");
+
+            decimal amountCl = Math.Clamp(request.AmountCl, 5.0m, 300.0m);
+            waterLog.UpdateDetails(amountCl, updatedConsumedAt);
+
+            await context.SaveChangesAsync(ct);
+            return Results.Ok(new { waterLog.Id, waterLog.AmountCl, waterLog.ConsumedAt });
+        })
+        .RequireAuthorization("RequireAuthenticatedDrinker");
+
+        // Delete a water log within 12h
+        group.MapDelete("/water/logs/{id:guid}", async (
+            Guid id,
+            ICurrentUserService currentUserService,
+            IApplicationDbContext context,
+            IDateTimeProvider dateTimeProvider,
+            CancellationToken ct) =>
+        {
+            var userId = currentUserService.UserId ?? throw new UnauthorizedException();
+            var waterLog = await context.WaterLogs
+                .FirstOrDefaultAsync(w => w.Id == id && w.UserId == userId, ct)
+                ?? throw new NotFoundException(nameof(WaterLog), id);
+
+            if (waterLog.ConsumedAt < dateTimeProvider.UtcNow.AddHours(-12))
+                throw new DomainException("Only water logged within the last 12 hours can be removed.");
+
+            context.WaterLogs.Remove(waterLog);
             await context.SaveChangesAsync(ct);
 
             return Results.NoContent();
@@ -397,7 +477,23 @@ public class DrinkLogsEndpoints : IEndpoint
         var pastEvents = await context.DrinkLogs
             .AsNoTracking()
             .Where(l => l.UserId == user.Id && l.ConsumedAt >= twelveHoursAgo && l.ConsumedAt <= now)
-            .Select(l => new DrinkEventInput(l.Id, l.DrinkNameSnapshot, l.ConsumedAt, l.TotalPureAlcoholGrams, l.TotalVolumeCl, l.EffectiveAbv, l.Notes, null))
+            .Select(l => new DrinkEventInput(
+                l.Id, 
+                l.DrinkNameSnapshot, 
+                l.ConsumedAt, 
+                l.TotalPureAlcoholGrams, 
+                l.TotalVolumeCl, 
+                l.EffectiveAbv, 
+                l.Notes, 
+                null,
+                l.StomachState,
+                l.TotalKcal))
+            .ToListAsync(ct);
+
+        var waterLogs = await context.WaterLogs
+            .AsNoTracking()
+            .Where(w => w.UserId == user.Id && w.ConsumedAt >= twelveHoursAgo && w.ConsumedAt <= now)
+            .Select(w => new WaterEventInput(w.Id, w.AmountCl, w.ConsumedAt))
             .ToListAsync(ct);
 
         return bacCalculator.ComputeRollingBac(
@@ -406,6 +502,7 @@ public class DrinkLogsEndpoints : IEndpoint
             user.Sex,
             user.BirthYear,
             pastEvents,
+            waterLogs,
             now
         );
     }

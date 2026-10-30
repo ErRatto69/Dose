@@ -18,7 +18,15 @@ public record DrinkEventInput(
     decimal TotalVolumeCl = 0m,
     decimal EffectiveAbv = 0m,
     string? Notes = null,
-    IReadOnlyList<LoggedDrinkComponentDto>? Components = null
+    IReadOnlyList<LoggedDrinkComponentDto>? Components = null,
+    StomachState StomachState = StomachState.LightSnack,
+    int TotalKcal = 0
+);
+
+public record WaterEventInput(
+    Guid Id,
+    decimal AmountCl,
+    DateTimeOffset ConsumedAt
 );
 
 public record BacTimelinePoint(
@@ -34,7 +42,12 @@ public record BacCalculationResult(
     string SafetyMessage,
     DateTimeOffset? EstimatedSoberAt,
     decimal TotalAlcoholGramsLast12h,
-    IReadOnlyList<BacTimelinePoint> Timeline
+    IReadOnlyList<BacTimelinePoint> Timeline,
+    int HangoverRiskPercent = 0,
+    int ResponsibleDrinkingScore = 100,
+    int TotalKcalLast12h = 0,
+    decimal TotalWaterClLast12h = 0m,
+    int WaterLogsCountLast12h = 0
 );
 
 public interface IBacCalculator
@@ -52,5 +65,6 @@ public interface IBacCalculator
         BiologicalSex sex,
         int? birthYear,
         IEnumerable<DrinkEventInput> logsLast12Hours,
+        IEnumerable<WaterEventInput> waterLogsLast12Hours,
         DateTimeOffset now);
 }

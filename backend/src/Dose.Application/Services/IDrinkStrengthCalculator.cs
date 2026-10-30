@@ -6,7 +6,8 @@ namespace Dose.Application.Services;
 public record RecipeComponentInput(
     IngredientCategory Category,
     decimal AmountCl,
-    decimal AbvPercent
+    decimal AbvPercent,
+    string? IngredientName = null
 );
 
 public interface IDrinkStrengthCalculator

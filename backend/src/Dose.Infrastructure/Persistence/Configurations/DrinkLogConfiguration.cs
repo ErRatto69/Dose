@@ -1,4 +1,5 @@
 ﻿using Dose.Domain.Entities;
+using Dose.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -21,6 +22,17 @@ public class DrinkLogConfiguration : IEntityTypeConfiguration<DrinkLog>
         builder.Property(x => x.TotalPureAlcoholCl).HasPrecision(6, 2).IsRequired();
         builder.Property(x => x.TotalPureAlcoholGrams).HasPrecision(7, 2).IsRequired();
         builder.Property(x => x.Notes).HasMaxLength(300);
+
+        // Mappa l'enum StomachState come stringa su Postgres (risolve l'InvalidCastException)
+        builder.Property(x => x.StomachState)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .HasDefaultValue(StomachState.LightSnack)
+            .IsRequired();
+
+        builder.Property(x => x.TotalKcal)
+            .HasDefaultValue(0)
+            .IsRequired();
 
         builder.HasIndex(x => new { x.UserId, x.ConsumedAt });
         builder.HasIndex(x => x.ConsumedAt);

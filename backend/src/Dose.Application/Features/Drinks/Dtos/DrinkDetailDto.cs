@@ -20,7 +20,8 @@ public record DrinkMetricsDto(
     decimal AbvPercent,
     decimal PureAlcoholGrams,
     int BottleScore1To10,
-    decimal BottleVisualRating
+    decimal BottleVisualRating,
+    int EstimatedKcal = 0
 );
 
 public record DrinkDetailDto(
@@ -33,5 +34,9 @@ public record DrinkDetailDto(
     DrinkMetricsDto Metrics,
     double AverageRating,
     int ReviewCount,
-    IReadOnlyList<DrinkIngredientDetailDto> Ingredients
+    IReadOnlyList<DrinkIngredientDetailDto> Ingredients,
+    Guid? CreatedByUserId = null,
+    bool IsLockedByCreator = false,
+    bool CanEdit = false,
+    bool CanDelete = false
 );

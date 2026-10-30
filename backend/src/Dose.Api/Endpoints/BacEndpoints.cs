@@ -51,9 +51,18 @@ public class BacEndpoints : IEndpoint
                         i.CategorySnapshot.ToString(),
                         i.AbvSnapshot,
                         i.AmountCl
-                    )).ToList()
+                    )).ToList(),
+                    l.StomachState,
+                    l.TotalKcal
                 ))
                 .ToList();
+
+            var waterLogs = await context.WaterLogs
+                .AsNoTracking()
+                .Where(w => w.UserId == userId && w.ConsumedAt >= twelveHoursAgo && w.ConsumedAt <= now)
+                .OrderBy(w => w.ConsumedAt)
+                .Select(w => new WaterEventInput(w.Id, w.AmountCl, w.ConsumedAt))
+                .ToListAsync(ct);
 
             var bacResult = bacCalculator.ComputeRollingBac(
                 user.WeightKg,
@@ -61,6 +70,7 @@ public class BacEndpoints : IEndpoint
                 user.Sex,
                 user.BirthYear,
                 activeEvents,
+                waterLogs,
                 now
             );
 
@@ -74,12 +84,18 @@ public class BacEndpoints : IEndpoint
                 bacResult.EstimatedSoberAt,
                 bacResult.TotalAlcoholGramsLast12h,
                 activeEvents,
-                bacResult.Timeline
+                bacResult.Timeline,
+                bacResult.HangoverRiskPercent,
+                bacResult.ResponsibleDrinkingScore,
+                bacResult.TotalKcalLast12h,
+                bacResult.TotalWaterClLast12h,
+                bacResult.WaterLogsCountLast12h,
+                waterLogs
             ));
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        // Admin-only monitoring overview with Search & Pagination
+        // Panoramica Party/Admin con ricerca e paginazione
         group.MapGet("/admin/users/bac-overview", async (
             int? pageNumber,
             int? pageSize,
@@ -103,7 +119,7 @@ public class BacEndpoints : IEndpoint
             var logs = await context.DrinkLogs
                 .AsNoTracking()
                 .Where(l => l.ConsumedAt >= twelveHoursAgo && l.ConsumedAt <= now)
-                .Select(l => new { l.UserId, l.Id, l.DrinkNameSnapshot, l.ConsumedAt, l.TotalPureAlcoholGrams })
+                .Select(l => new { l.UserId, l.Id, l.DrinkNameSnapshot, l.ConsumedAt, l.TotalPureAlcoholGrams, l.StomachState, l.TotalKcal })
                 .ToListAsync(ct);
 
             var logsByUser = logs.GroupBy(l => l.UserId).ToDictionary(g => g.Key, g => g.ToList());
@@ -111,10 +127,27 @@ public class BacEndpoints : IEndpoint
             var fullOverview = users.Select(u =>
             {
                 var userLogs = logsByUser.TryGetValue(u.Id, out var userEvents)
-                    ? userEvents.Select(e => new DrinkEventInput(e.Id, e.DrinkNameSnapshot, e.ConsumedAt, e.TotalPureAlcoholGrams)).ToList()
-                    : [];
+                    ? userEvents.Select(e => new DrinkEventInput(
+                        e.Id, 
+                        e.DrinkNameSnapshot, 
+                        e.ConsumedAt, 
+                        e.TotalPureAlcoholGrams, 
+                        0m, 
+                        0m, 
+                        null, 
+                        null, 
+                        e.StomachState, 
+                        e.TotalKcal)).ToList()
+                    : new List<DrinkEventInput>();
 
-                var bac = bacCalculator.ComputeRollingBac(u.WeightKg, u.HeightCm, u.Sex, u.BirthYear, userLogs, now);
+                var bac = bacCalculator.ComputeRollingBac(
+                    u.WeightKg, 
+                    u.HeightCm, 
+                    u.Sex, 
+                    u.BirthYear, 
+                    userLogs, 
+                    Array.Empty<WaterEventInput>(), 
+                    now);
 
                 return new
                 {

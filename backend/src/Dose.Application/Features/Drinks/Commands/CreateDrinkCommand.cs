@@ -17,6 +17,7 @@ public record CreateDrinkCommand(
     IReadOnlyList<string> PreparationSteps,
     string? GlassType,
     string? ImageUrl,
+    bool IsLockedByCreator,
     IReadOnlyList<CreateDrinkIngredientItem> Ingredients
 );
 

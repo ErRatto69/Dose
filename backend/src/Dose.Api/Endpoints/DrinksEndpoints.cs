@@ -8,6 +8,7 @@ using Dose.Application.Features.Drinks.Dtos;
 using Dose.Application.Services;
 using Dose.Domain.Common;
 using Dose.Domain.Entities;
+using Dose.Domain.Enums;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using ValidationException = Dose.Application.Common.Exceptions.ValidationException;
@@ -40,12 +41,13 @@ public class DrinksEndpoints : IEndpoint
     {
         var group = app.MapGroup("/api/drinks").WithTags("Drinks");
 
-        // Paginated & Searchable Drinks Catalog
+        // 1. Catalogo Paginato dei Drinks
         group.MapGet("/", async (
             int? pageNumber,
             int? pageSize,
             string? search,
             string? glassType,
+            ICurrentUserService currentUserService,
             IApplicationDbContext context,
             CancellationToken ct) =>
         {
@@ -73,11 +75,16 @@ public class DrinksEndpoints : IEndpoint
 
             int totalCount = await query.CountAsync(ct);
 
-            var items = await query
+            Guid? currentUserId = currentUserService.UserId;
+            bool isAdmin = currentUserService.Role == UserRole.Admin;
+            bool isBartender = currentUserService.Role == UserRole.Bartender;
+
+            var rawItems = await query
                 .OrderBy(d => d.Name)
                 .Skip((page - 1) * size)
                 .Take(size)
-                .Select(d => new DrinkCatalogItemDto(
+                .Select(d => new
+                {
                     d.Id,
                     d.Name,
                     d.Description,
@@ -86,17 +93,45 @@ public class DrinksEndpoints : IEndpoint
                     d.CachedTotalVolumeCl,
                     d.CachedAbv,
                     d.CachedBottleScore,
-                    d.Reviews.Any() ? Math.Round(d.Reviews.Average(r => (double)r.Rating), 1) : 0,
-                    d.Reviews.Count,
-                    d.IsPublished
-                ))
+                    AverageRating = d.Reviews.Any() ? Math.Round(d.Reviews.Average(r => (double)r.Rating), 1) : 0,
+                    ReviewCount = d.Reviews.Count,
+                    d.IsPublished,
+                    d.CreatedByUserId,
+                    d.IsLockedByCreator,
+                    d.CachedKcal
+                })
                 .ToListAsync(ct);
+
+            var items = rawItems.Select(d =>
+            {
+                bool isSystem = d.CreatedByUserId == null;
+                bool canManage = !isSystem && (isAdmin || (isBartender && (!d.IsLockedByCreator || d.CreatedByUserId == currentUserId)));
+
+                return new DrinkCatalogItemDto(
+                    d.Id,
+                    d.Name,
+                    d.Description,
+                    d.GlassType,
+                    d.ImageUrl,
+                    d.CachedTotalVolumeCl,
+                    d.CachedAbv,
+                    d.CachedBottleScore,
+                    d.AverageRating,
+                    d.ReviewCount,
+                    d.IsPublished,
+                    d.CreatedByUserId,
+                    d.IsLockedByCreator,
+                    CanEdit: canManage,
+                    CanDelete: canManage,
+                    EstimatedKcal: d.CachedKcal
+                );
+            }).ToList();
 
             return Results.Ok(new PagedResult<DrinkCatalogItemDto>(items, totalCount, page, size));
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        // Searchable Glass Types list (returns max 8 at a time so it never loads everything at once)
+        // 2. Tipologie di Bicchieri
         group.MapGet("/glass-types", (string? q) =>
         {
             var matches = string.IsNullOrWhiteSpace(q)
@@ -107,7 +142,12 @@ public class DrinksEndpoints : IEndpoint
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        group.MapGet("/{id:guid}", async (Guid id, IApplicationDbContext context, CancellationToken ct) =>
+        // 3. Dettaglio Drink Singolo
+        group.MapGet("/{id:guid}", async (
+            Guid id,
+            ICurrentUserService currentUserService,
+            IApplicationDbContext context,
+            CancellationToken ct) =>
         {
             var drink = await context.Drinks
                 .AsNoTracking()
@@ -142,8 +182,16 @@ public class DrinksEndpoints : IEndpoint
                 drink.CachedAbv,
                 drink.CachedPureAlcoholGrams,
                 drink.CachedBottleScore,
-                Math.Round(drink.CachedBottleScore / 2.0m, 2)
+                Math.Round(drink.CachedBottleScore / 2.0m, 2),
+                drink.CachedKcal
             );
+
+            Guid? currentUserId = currentUserService.UserId;
+            bool isAdmin = currentUserService.Role == UserRole.Admin;
+            bool isBartender = currentUserService.Role == UserRole.Bartender;
+
+            bool isSystem = drink.CreatedByUserId == null;
+            bool canManage = !isSystem && (isAdmin || (isBartender && (!drink.IsLockedByCreator || drink.CreatedByUserId == currentUserId)));
 
             var detail = new DrinkDetailDto(
                 drink.Id,
@@ -155,18 +203,22 @@ public class DrinksEndpoints : IEndpoint
                 metrics,
                 drink.Reviews.Any() ? Math.Round(drink.Reviews.Average(r => (double)r.Rating), 1) : 0,
                 drink.Reviews.Count,
-                ingredients
+                ingredients,
+                drink.CreatedByUserId,
+                drink.IsLockedByCreator,
+                CanEdit: canManage,
+                CanDelete: canManage
             );
 
             return Results.Ok(detail);
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        // Upload Drink Image (Bartenders and Admins only)
+        // 4. Upload Immagine Cocktail
         group.MapPost("/upload-image", async (
-                IFormFile? file,
-                IDrinkImageStorageService imageStorageService,
-                CancellationToken ct) =>
+            IFormFile? file,
+            IDrinkImageStorageService imageStorageService,
+            CancellationToken ct) =>
         {
             if (file == null || file.Length == 0)
                 return Results.BadRequest(new { error = "No file was uploaded." });
@@ -185,7 +237,8 @@ public class DrinksEndpoints : IEndpoint
         .RequireAuthorization("RequireBartenderOrAdmin")
         .DisableAntiforgery()
         .RequireRateLimiting("upload-policy");
-        
+
+        // 5. Creazione Nuovo Drink (o Duplicazione)
         group.MapPost("/", async (
             CreateDrinkCommand command,
             IApplicationDbContext context,
@@ -198,6 +251,21 @@ public class DrinksEndpoints : IEndpoint
             if (!validationResult.IsValid)
                 throw new ValidationException(validationResult.Errors);
 
+            // Validazione preventiva unicità nome (impedisce collisione su indice DB)
+            string trimmedName = command.Name.Trim();
+            bool nameExists = await context.Drinks
+                .AnyAsync(d => d.Name.ToLower() == trimmedName.ToLower(), ct);
+
+            if (nameExists)
+            {
+                throw new ValidationException(
+                [
+                    new FluentValidation.Results.ValidationFailure(
+                        nameof(command.Name), 
+                        $"A cocktail named '{trimmedName}' already exists. Please choose a different name.")
+                ]);
+            }
+
             var ingredientIds = command.Ingredients.Select(i => i.IngredientId).ToList();
             var dbIngredients = await context.Ingredients
                 .Where(i => ingredientIds.Contains(i.Id))
@@ -209,13 +277,12 @@ public class DrinksEndpoints : IEndpoint
             var recipeComponents = command.Ingredients.Select(i =>
             {
                 var ing = dbIngredients[i.IngredientId];
-                return new RecipeComponentInput(ing.Category, i.AmountCl, ing.Abv);
+                return new RecipeComponentInput(ing.Category, i.AmountCl, ing.Abv, ing.Name);
             });
 
             var calculatedMetrics = strengthCalculator.CalculateMetrics(recipeComponents);
             string stepsJson = JsonSerializer.Serialize(command.PreparationSteps);
 
-            // Se la descrizione è vuota, applica una descrizione descrittiva di default
             string drinkDescription = string.IsNullOrWhiteSpace(command.Description)
                 ? $"Craft cocktail recipe featuring {dbIngredients.Values.FirstOrDefault()?.Name ?? "premium spirits"}."
                 : command.Description.Trim();
@@ -226,7 +293,8 @@ public class DrinksEndpoints : IEndpoint
                 stepsJson,
                 command.GlassType,
                 command.ImageUrl,
-                currentUserService.UserId
+                currentUserService.UserId,
+                command.IsLockedByCreator
             );
 
             newDrink.UpdateCachedMetrics(calculatedMetrics);
@@ -249,6 +317,133 @@ public class DrinksEndpoints : IEndpoint
             await context.SaveChangesAsync(ct);
 
             return Results.Created($"/api/drinks/{newDrink.Id}", new { newDrink.Id, newDrink.Name });
+        })
+        .RequireAuthorization("RequireBartenderOrAdmin");
+
+        // 6. Modifica Drink Esistente
+        group.MapPut("/{id:guid}", async (
+            Guid id,
+            UpdateDrinkCommand command,
+            IApplicationDbContext context,
+            IDrinkStrengthCalculator strengthCalculator,
+            ICurrentUserService currentUserService,
+            IValidator<UpdateDrinkCommand> validator,
+            CancellationToken ct) =>
+        {
+            var validationResult = await validator.ValidateAsync(command, ct);
+            if (!validationResult.IsValid)
+                throw new ValidationException(validationResult.Errors);
+
+            var drink = await context.Drinks
+                .FirstOrDefaultAsync(d => d.Id == id, ct)
+                ?? throw new NotFoundException(nameof(Drink), id);
+
+            if (drink.CreatedByUserId == null)
+                throw new ForbiddenException("System and synced cocktails cannot be modified. Duplicate this drink to create a custom variation.");
+
+            Guid? currentUserId = currentUserService.UserId;
+            bool isAdmin = currentUserService.Role == UserRole.Admin;
+            bool isBartender = currentUserService.Role == UserRole.Bartender;
+
+            bool canManage = isAdmin || (isBartender && (!drink.IsLockedByCreator || drink.CreatedByUserId == currentUserId));
+            if (!canManage)
+                throw new ForbiddenException("This recipe is locked by its creator. Only the author or an administrator can modify it.");
+
+            string trimmedName = command.Name.Trim();
+            bool nameExists = await context.Drinks
+                .AnyAsync(d => d.Id != id && d.Name.ToLower() == trimmedName.ToLower(), ct);
+
+            if (nameExists)
+            {
+                throw new ValidationException(
+                [
+                    new FluentValidation.Results.ValidationFailure(
+                        nameof(command.Name), 
+                        $"A cocktail named '{trimmedName}' already exists. Please choose a different name.")
+                ]);
+            }
+
+            var ingredientIds = command.Ingredients.Select(i => i.IngredientId).ToList();
+            var dbIngredients = await context.Ingredients
+                .Where(i => ingredientIds.Contains(i.Id))
+                .ToDictionaryAsync(i => i.Id, ct);
+
+            if (dbIngredients.Count != ingredientIds.Distinct().Count())
+                throw new DomainException("One or more referenced ingredients do not exist.");
+
+            var recipeComponents = command.Ingredients.Select(i =>
+            {
+                var ing = dbIngredients[i.IngredientId];
+                return new RecipeComponentInput(ing.Category, i.AmountCl, ing.Abv, ing.Name);
+            });
+
+            var calculatedMetrics = strengthCalculator.CalculateMetrics(recipeComponents);
+            string stepsJson = JsonSerializer.Serialize(command.PreparationSteps);
+
+            string drinkDescription = string.IsNullOrWhiteSpace(command.Description)
+                ? $"Craft cocktail recipe featuring {dbIngredients.Values.FirstOrDefault()?.Name ?? "premium spirits"}."
+                : command.Description.Trim();
+
+            drink.UpdateDetails(
+                command.Name.Trim(),
+                drinkDescription,
+                stepsJson,
+                command.GlassType,
+                command.ImageUrl,
+                command.IsLockedByCreator
+            );
+
+            drink.UpdateCachedMetrics(calculatedMetrics);
+
+            await context.DrinkIngredients
+                .Where(di => di.DrinkId == id)
+                .ExecuteDeleteAsync(ct);
+
+            foreach (var item in command.Ingredients)
+            {
+                var link = new DrinkIngredient(
+                    drink.Id,
+                    item.IngredientId,
+                    item.AmountCl,
+                    item.DisplayUnitNote,
+                    item.IsOptional,
+                    item.SortOrder
+                );
+                await context.DrinkIngredients.AddAsync(link, ct);
+            }
+
+            await context.SaveChangesAsync(ct);
+
+            return Results.Ok(new { drink.Id, drink.Name });
+        })
+        .RequireAuthorization("RequireBartenderOrAdmin");
+
+        // 7. Eliminazione Drink
+        group.MapDelete("/{id:guid}", async (
+            Guid id,
+            ICurrentUserService currentUserService,
+            IApplicationDbContext context,
+            CancellationToken ct) =>
+        {
+            var drink = await context.Drinks
+                .FirstOrDefaultAsync(d => d.Id == id, ct)
+                ?? throw new NotFoundException(nameof(Drink), id);
+
+            if (drink.CreatedByUserId == null)
+                throw new ForbiddenException("System and synced cocktails cannot be deleted.");
+
+            Guid? currentUserId = currentUserService.UserId;
+            bool isAdmin = currentUserService.Role == UserRole.Admin;
+            bool isBartender = currentUserService.Role == UserRole.Bartender;
+
+            bool canManage = isAdmin || (isBartender && (!drink.IsLockedByCreator || drink.CreatedByUserId == currentUserId));
+            if (!canManage)
+                throw new ForbiddenException("This recipe is locked by its creator. Only the author or an administrator can delete it.");
+
+            context.Drinks.Remove(drink);
+            await context.SaveChangesAsync(ct);
+
+            return Results.NoContent();
         })
         .RequireAuthorization("RequireBartenderOrAdmin");
     }

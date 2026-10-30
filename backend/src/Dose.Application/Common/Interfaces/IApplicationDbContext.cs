@@ -14,6 +14,7 @@ public interface IApplicationDbContext
     DbSet<Review> Reviews { get; }
     DbSet<DrinkLog> DrinkLogs { get; }
     DbSet<DrinkLogItem> DrinkLogItems { get; }
+    DbSet<WaterLog> WaterLogs { get; }
     DbSet<RankingTier> RankingTiers { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
