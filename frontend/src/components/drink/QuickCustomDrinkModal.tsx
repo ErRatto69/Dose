@@ -411,7 +411,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                     <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-800/60 text-xs text-red-200 flex items-start gap-2.5">
                         <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                         <div className="leading-relaxed">
-                            <strong>Responsible Drinking:</strong> Do not drive if your BAC exceeds 0.50 g/L[cite: 7]. Any drink logged here can be edited or deleted within 12 hours from your <strong>My BAC</strong> telemetry page[cite: 7].
+                            <strong>Responsible Drinking:</strong> Do not drive if your BAC exceeds 0.50 g/L. Any drink logged here can be edited or deleted within 12 hours from your <strong>My BAC</strong> telemetry page.
                         </div>
                     </div>
                 </div>

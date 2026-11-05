@@ -7,6 +7,7 @@ import { usersApi } from '@/api/users.api';
 import { SafetyBanner } from '@/components/safety/SafetyBanner';
 import { QuickCustomDrinkModal } from '@/components/drink/QuickCustomDrinkModal';
 import { LogWaterModal } from '@/components/safety/LogWaterModal';
+import {isAdmin} from "@/utils/auth";
 import {
     Wine,
     Sparkles,
@@ -42,7 +43,7 @@ export const Layout: React.FC = () => {
         enabled: !!user,
     });
 
-    const isAdmin = user?.role === 'Admin' || String(user?.role) === '0';
+    const hasAdminAccess = isAdmin(user);
 
     const navItems = [
         { to: '/drinks', label: 'Catalog', icon: Wine },
@@ -50,7 +51,7 @@ export const Layout: React.FC = () => {
         { to: '/bac', label: 'My BAC', icon: Activity },
         { to: '/leaderboard', label: 'Ranks', icon: Trophy },
         { to: '/profile', label: 'Profile', icon: UserCircle },
-        ...(isAdmin
+        ...(hasAdminAccess
             ? [
                 { to: '/admin/users', label: 'Users', icon: Users },
                 { to: '/admin/reviews', label: 'Reviews', icon: MessageSquare },
@@ -148,7 +149,7 @@ export const Layout: React.FC = () => {
                                         {user.username}
                                     </span>
                                     <span className="text-[10px] text-neutral-400 font-medium">
-                                        {isAdmin ? 'Admin' : user.role}
+                                        {hasAdminAccess ? 'Admin' : user.role}
                                     </span>
                                 </div>
                             </NavLink>

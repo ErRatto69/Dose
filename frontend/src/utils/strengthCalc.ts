@@ -70,7 +70,8 @@ export const estimateDeltaBac = (
 ): number => {
     if (alcoholGrams <= 0 || weightKg <= 0) return 0;
 
-    const age = birthYear ? Math.min(Math.max(2026 - birthYear, 18), 99) : 25;
+    const currentYear = new Date().getFullYear();
+    const age = birthYear ? Math.min(Math.max(currentYear - birthYear, 18), 99) : 25;
     const tbwLiters =
         sex === 'Male'
             ? 2.447 - 0.09516 * age + 0.1074 * heightCm + 0.3362 * weightKg

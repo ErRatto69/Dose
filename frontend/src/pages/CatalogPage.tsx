@@ -7,7 +7,6 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { GlobalSearch } from '@/components/common/GlobalSearch';
 import { DoseCustomizerModal } from '@/components/drink/DoseCustomizerModal';
 import { DrinkDetailModal } from '@/components/drink/DrinkDetailModal';
-import { QuickCustomDrinkModal } from '@/components/drink/QuickCustomDrinkModal';
 import { CreateDrinkModal } from '@/components/drink/CreateDrinkModal';
 import { CreateIngredientModal } from '@/components/drink/CreateIngredientModal';
 import { CocktailDbSyncModal } from '@/components/admin/CocktailDbSyncModal';
@@ -16,11 +15,11 @@ import type { DrinkDetail } from '@/types';
 import {
     Plus,
     Sparkles,
-    Zap,
     Wine,
     Loader2,
     RefreshCw,
 } from 'lucide-react';
+import {canManageCocktails, isAdmin} from "@/utils/auth";
 
 const BASE_SPIRITS = [
     { label: 'All', query: '' },
@@ -43,7 +42,6 @@ export const CatalogPage: React.FC = () => {
         null
     );
     const [viewedDrink, setViewedDrink] = useState<DrinkDetail | null>(null);
-    const [isQuickPourOpen, setIsQuickPourOpen] = useState(false);
 
     // Create / Edit / Duplicate state
     const [isCreateDrinkOpen, setIsCreateDrinkOpen] = useState(false);
@@ -58,8 +56,8 @@ export const CatalogPage: React.FC = () => {
     const { openModal } = useDoseModalStore();
     const { user } = useAuthStore();
 
-    const isAdmin = user?.role === 'Admin' || String(user?.role) === '0';
-    const canManageCatalog = isAdmin || user?.role === 'Bartender' || String(user?.role) === '1';
+    const hasAdminAccess = isAdmin(user);
+    const canManageCatalog = canManageCocktails(user);
 
     // Debounce search query & spirit filters
     useEffect(() => {
@@ -75,7 +73,7 @@ export const CatalogPage: React.FC = () => {
         queryKey: ['cocktaildb-sync-status'],
         queryFn: syncApi.getCocktailDbSyncStatus,
         refetchInterval: (query) => (query.state.data?.isRunning ? 2000 : 15000),
-        enabled: isAdmin,
+        enabled: hasAdminAccess,
     });
 
     // Infinite Query for Drinks
@@ -168,17 +166,8 @@ export const CatalogPage: React.FC = () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setIsQuickPourOpen(true)}
-                            className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-red-600/25 transition-all active:scale-95"
-                        >
-                            <Zap className="w-4 h-4 fill-white" />
-                            <span>Quick Pour</span>
-                        </button>
-
                         {/* Admin Sync Button */}
-                        {isAdmin && (
+                        {hasAdminAccess && (
                             <button
                                 type="button"
                                 onClick={() => setIsSyncModalOpen(true)}
@@ -308,10 +297,6 @@ export const CatalogPage: React.FC = () => {
                 onDeleted={() => refetch()}
             />
             <DoseCustomizerModal onSuccessLogged={() => refetch()} />
-            <QuickCustomDrinkModal
-                isOpen={isQuickPourOpen}
-                onClose={() => setIsQuickPourOpen(false)}
-            />
             <CreateDrinkModal
                 isOpen={isCreateDrinkOpen}
                 onClose={() => {
