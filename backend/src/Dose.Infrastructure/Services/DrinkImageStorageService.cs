@@ -84,11 +84,25 @@ public class DrinkImageStorageService(
         }
 
         using var memoryStream = new MemoryStream();
-        await stream.CopyToAsync(memoryStream, cancellationToken);
+        byte[] buffer = new byte[81920]; // Chunk da 80 KB
+        long totalBytesRead = 0;
+        int bytesRead;
 
-        if (memoryStream.Length > MaxAllowedFileSizeBytes || memoryStream.Length < 16)
+        // Lettura protetta: se lo stream supera 5 MB reali, interrompe subito senza saturare la RAM
+        while ((bytesRead = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
         {
-            logger.LogWarning("Payload size invalid ({Bytes} bytes)", memoryStream.Length);
+            totalBytesRead += bytesRead;
+            if (totalBytesRead > MaxAllowedFileSizeBytes)
+            {
+                logger.LogWarning("Payload size exceeded maximum allowed limit of 5MB");
+                return null;
+            }
+            await memoryStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+        }
+
+        if (totalBytesRead < 16)
+        {
+            logger.LogWarning("Payload size invalid ({Bytes} bytes)", totalBytesRead);
             return null;
         }
 
@@ -105,7 +119,6 @@ public class DrinkImageStorageService(
             return null;
         }
 
-        // Decode, resize 800x800, strip metadata and re-encode to pure WebP
         string fileName = $"{Guid.NewGuid():N}.webp";
         string storageDir = Path.Combine(environment.ContentRootPath, "storage", "drinks");
         Directory.CreateDirectory(storageDir);
@@ -115,7 +128,6 @@ public class DrinkImageStorageService(
         try
         {
             using var image = await Image.LoadAsync(memoryStream, cancellationToken);
-
             image.Mutate(ctx => ctx.Resize(new ResizeOptions
             {
                 Size = new Size(800, 800),
@@ -130,7 +142,6 @@ public class DrinkImageStorageService(
             };
 
             await image.SaveAsync(targetFilePath, encoder, cancellationToken);
-
             return $"/storage/drinks/{fileName}";
         }
         catch (Exception ex)
@@ -166,14 +177,39 @@ public class DrinkImageStorageService(
             byte[] bytes = ip.GetAddressBytes();
             return bytes[0] switch
             {
-                10 => true,
-                172 when bytes[1] >= 16 && bytes[1] <= 31 => true,
-                192 when bytes[2] == 168 => true,
-                169 when bytes[1] == 254 => true,
+                0 => true,                                                 // 0.0.0.0/8
+                10 => true,                                                // 10.0.0.0/8
+                127 => true,                                               // 127.0.0.0/8
+                100 when bytes[1] >= 64 && bytes[1] <= 127 => true,       // 100.64.0.0/10 Carrier-Grade NAT
+                172 when bytes[1] >= 16 && bytes[1] <= 31 => true,        // 172.16.0.0/12
+                192 when bytes[1] == 168 => true,                         // 192.168.0.0/16 (Corretto bytes[1])
+                169 when bytes[1] == 254 => true,                         // 169.254.0.0/16 Link-Local
                 _ => false
             };
         }
 
-        return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal;
+        return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || IPAddress.IPv6Loopback.Equals(ip);
+    }
+    
+    public void DeleteImage(string? imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl)) return;
+
+        try
+        {
+            string fileName = Path.GetFileName(imageUrl);
+            string storageDir = Path.Combine(environment.ContentRootPath, "storage", "drinks");
+            string filePath = Path.Combine(storageDir, fileName);
+
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+                logger.LogInformation("Deleted orphan drink image: {FileName}", fileName);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to delete orphan image at {Url}", imageUrl);
+        }
     }
 }

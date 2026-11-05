@@ -7,15 +7,14 @@ namespace Dose.Infrastructure.Security;
 
 public class CurrentUserService(IHttpContextAccessor httpContextAccessor) : ICurrentUserService
 {
-    private readonly ClaimsPrincipal? _user = httpContextAccessor.HttpContext?.User;
+    private ClaimsPrincipal? User => httpContextAccessor.HttpContext?.User;
 
     public Guid? UserId
     {
         get
         {
-            string? idClaim = _user?.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                              ?? _user?.FindFirst("sub")?.Value;
-
+            string? idClaim = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                              ?? User?.FindFirst("sub")?.Value;
             return Guid.TryParse(idClaim, out var id) ? id : null;
         }
     }
@@ -24,10 +23,10 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor) : ICur
     {
         get
         {
-            string? roleClaim = _user?.FindFirst(ClaimTypes.Role)?.Value;
+            string? roleClaim = User?.FindFirst(ClaimTypes.Role)?.Value;
             return Enum.TryParse<UserRole>(roleClaim, true, out var role) ? role : null;
         }
     }
 
-    public bool IsAuthenticated => _user?.Identity?.IsAuthenticated ?? false;
+    public bool IsAuthenticated => User?.Identity?.IsAuthenticated ?? false;
 }

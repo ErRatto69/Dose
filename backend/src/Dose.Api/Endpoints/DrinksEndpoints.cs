@@ -104,8 +104,7 @@ public class DrinksEndpoints : IEndpoint
 
             var items = rawItems.Select(d =>
             {
-                bool isSystem = d.CreatedByUserId == null;
-                bool canManage = !isSystem && (isAdmin || (isBartender && (!d.IsLockedByCreator || d.CreatedByUserId == currentUserId)));
+                bool canManage = Drink.CanManage(d.CreatedByUserId, d.IsLockedByCreator, currentUserId, currentUserService.Role);
 
                 return new DrinkCatalogItemDto(
                     d.Id,
@@ -191,7 +190,7 @@ public class DrinksEndpoints : IEndpoint
             bool isBartender = currentUserService.Role == UserRole.Bartender;
 
             bool isSystem = drink.CreatedByUserId == null;
-            bool canManage = !isSystem && (isAdmin || (isBartender && (!drink.IsLockedByCreator || drink.CreatedByUserId == currentUserId)));
+            bool canManage = drink.CanBeManagedBy(currentUserService.UserId, currentUserService.Role);
 
             var detail = new DrinkDetailDto(
                 drink.Id,
@@ -328,6 +327,7 @@ public class DrinksEndpoints : IEndpoint
             IDrinkStrengthCalculator strengthCalculator,
             ICurrentUserService currentUserService,
             IValidator<UpdateDrinkCommand> validator,
+            IDrinkImageStorageService imageStorageService,
             CancellationToken ct) =>
         {
             var validationResult = await validator.ValidateAsync(command, ct);
@@ -338,8 +338,20 @@ public class DrinksEndpoints : IEndpoint
                 .FirstOrDefaultAsync(d => d.Id == id, ct)
                 ?? throw new NotFoundException(nameof(Drink), id);
 
-            if (drink.CreatedByUserId == null)
-                throw new ForbiddenException("System and synced cocktails cannot be modified. Duplicate this drink to create a custom variation.");
+            if (!drink.CanBeManagedBy(currentUserService.UserId, currentUserService.Role))
+            {
+                if (drink.CreatedByUserId == null)
+                    throw new ForbiddenException("System and synced cocktails cannot be modified. Duplicate this drink to create a custom variation.");
+
+                throw new ForbiddenException("This recipe is locked by its creator. Only the author or an administrator can modify it.");
+            }
+            
+            if (!string.IsNullOrWhiteSpace(drink.ImageUrl) &&
+                drink.ImageUrl != command.ImageUrl &&
+                drink.ImageUrl.StartsWith("/storage/drinks/", StringComparison.OrdinalIgnoreCase))
+            {
+                imageStorageService.DeleteImage(drink.ImageUrl);
+            }
 
             Guid? currentUserId = currentUserService.UserId;
             bool isAdmin = currentUserService.Role == UserRole.Admin;
@@ -423,14 +435,30 @@ public class DrinksEndpoints : IEndpoint
             Guid id,
             ICurrentUserService currentUserService,
             IApplicationDbContext context,
+            IDrinkImageStorageService imageStorageService,
             CancellationToken ct) =>
         {
             var drink = await context.Drinks
                 .FirstOrDefaultAsync(d => d.Id == id, ct)
                 ?? throw new NotFoundException(nameof(Drink), id);
 
-            if (drink.CreatedByUserId == null)
-                throw new ForbiddenException("System and synced cocktails cannot be deleted.");
+            if (!drink.CanBeManagedBy(currentUserService.UserId, currentUserService.Role))
+            {
+                if (drink.CreatedByUserId == null)
+                    throw new ForbiddenException("System and synced cocktails cannot be deleted.");
+
+                throw new ForbiddenException("This recipe is locked by its creator. Only the author or an administrator can delete it.");
+            }
+
+            // Pulizia file immagine su disco
+            if (!string.IsNullOrWhiteSpace(drink.ImageUrl) &&
+                drink.ImageUrl.StartsWith("/storage/drinks/", StringComparison.OrdinalIgnoreCase))
+            {
+                imageStorageService.DeleteImage(drink.ImageUrl);
+            }
+
+            context.Drinks.Remove(drink);
+            await context.SaveChangesAsync(ct);
 
             Guid? currentUserId = currentUserService.UserId;
             bool isAdmin = currentUserService.Role == UserRole.Admin;

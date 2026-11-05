@@ -5,6 +5,7 @@ using Dose.Application.Common.Interfaces;
 using Dose.Domain.Enums;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Dose.Api.Extensions;
@@ -17,6 +18,8 @@ public static class SecurityExtensions
             ?? throw new InvalidOperationException("Jwt:SecretKey is not configured.");
         string issuer = configuration["Jwt:Issuer"] ?? "DoseApp";
         string audience = configuration["Jwt:Audience"] ?? "DoseClients";
+
+        services.AddMemoryCache();
 
         services.AddAuthentication(options =>
         {
@@ -37,12 +40,11 @@ public static class SecurityExtensions
                 ClockSkew = TimeSpan.FromMinutes(1)
             };
 
-            // Reject tokens immediately if the user account was disabled or deleted
+            // Verifica account attivo con caching in-memory per prevenire database hammering
             options.Events = new JwtBearerEvents
             {
                 OnTokenValidated = async context =>
                 {
-                    var dbContext = context.HttpContext.RequestServices.GetRequiredService<IApplicationDbContext>();
                     string? sub = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
                                   ?? context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
 
@@ -52,9 +54,18 @@ public static class SecurityExtensions
                         return;
                     }
 
-                    bool isActiveUser = await dbContext.Users
-                        .AsNoTracking()
-                        .AnyAsync(u => u.Id == userId && u.IsActive, context.HttpContext.RequestAborted);
+                    var cache = context.HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
+                    string cacheKey = $"user_active_{userId}";
+
+                    if (!cache.TryGetValue(cacheKey, out bool isActiveUser))
+                    {
+                        var dbContext = context.HttpContext.RequestServices.GetRequiredService<IApplicationDbContext>();
+                        isActiveUser = await dbContext.Users
+                            .AsNoTracking()
+                            .AnyAsync(u => u.Id == userId && u.IsActive, context.HttpContext.RequestAborted);
+
+                        cache.Set(cacheKey, isActiveUser, TimeSpan.FromSeconds(60));
+                    }
 
                     if (!isActiveUser)
                     {
@@ -71,13 +82,23 @@ public static class SecurityExtensions
             .AddPolicy("RequireAuthenticatedDrinker", policy =>
                 policy.RequireRole(UserRole.Admin.ToString(), UserRole.Bartender.ToString(), UserRole.Drinker.ToString()));
 
+        // CORS ristretto alle origini note
+        string[]? configuredOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+            ?? configuration["Cors:AllowedOrigins"]?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        string[] defaultOrigins = ["http://localhost:5155", "http://127.0.0.1:5155", "http://localhost:3000", "http://localhost:8080"];
+        string[] allowedOrigins = (configuredOrigins != null && configuredOrigins.Length > 0)
+            ? configuredOrigins
+            : defaultOrigins;
+
         services.AddCors(options =>
         {
             options.AddPolicy("AllowFrontendApp", policy =>
             {
-                policy.AllowAnyOrigin()
+                policy.WithOrigins(allowedOrigins)
                       .AllowAnyHeader()
-                      .AllowAnyMethod();
+                      .AllowAnyMethod()
+                      .AllowCredentials();
             });
         });
 

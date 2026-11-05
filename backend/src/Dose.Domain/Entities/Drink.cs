@@ -1,4 +1,5 @@
 ﻿using Dose.Domain.Common;
+using Dose.Domain.Enums;
 using Dose.Domain.ValueObjects;
 
 namespace Dose.Domain.Entities;
@@ -27,6 +28,10 @@ public class Drink : BaseEntity
     public virtual ICollection<Review> Reviews { get; private set; } = new List<Review>();
     public virtual ICollection<DrinkLog> DrinkLogs { get; private set; } = new List<DrinkLog>();
 
+    public bool CanBeManagedBy(Guid? userId, UserRole? role) =>
+        CanManage(CreatedByUserId, IsLockedByCreator, userId, role);
+
+    
     protected Drink() { }
 
     public Drink(
@@ -78,5 +83,16 @@ public class Drink : BaseEntity
     {
         IsPublished = isPublished;
         UpdateTimestamp();
+    }
+    
+    public static bool CanManage(Guid? createdByUserId, bool isLockedByCreator, Guid? userId, UserRole? role)
+    {
+        if (createdByUserId == null) return false;
+        if (role == UserRole.Admin) return true;
+        if (role == UserRole.Bartender)
+        {
+            return !isLockedByCreator || createdByUserId == userId;
+        }
+        return false;
     }
 }

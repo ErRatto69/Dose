@@ -75,18 +75,15 @@ public class IngredientsEndpoints : IEndpoint
             if (string.IsNullOrWhiteSpace(q))
                 return Results.Ok(Array.Empty<IngredientSuggestionDto>());
 
-            string normalizedQuery = RemoveDiacritics(q.Trim());
+            string pattern = $"%{q.Trim()}%";
 
-            var allIngredients = await context.Ingredients
+            var suggestions = await context.Ingredients
                 .AsNoTracking()
-                .OrderBy(i => i.Name)
-                .ToListAsync(ct);
-
-            var suggestions = allIngredients
                 .Where(i =>
-                    RemoveDiacritics(i.Name).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase) ||
-                    RemoveDiacritics(i.SubCategory).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase) ||
-                    (i.Flavor != null && RemoveDiacritics(i.Flavor).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)))
+                    EF.Functions.ILike(i.Name, pattern) ||
+                    EF.Functions.ILike(i.SubCategory, pattern) ||
+                    (i.Flavor != null && EF.Functions.ILike(i.Flavor, pattern)))
+                .OrderBy(i => i.Name)
                 .Take(12)
                 .Select(i => new IngredientSuggestionDto(
                     i.Id,
@@ -97,7 +94,7 @@ public class IngredientsEndpoints : IEndpoint
                     i.Abv,
                     i.IsAvailableInBar
                 ))
-                .ToList();
+                .ToListAsync(ct);
 
             return Results.Ok(suggestions);
         })

@@ -1,4 +1,5 @@
-﻿using Dose.Domain.Enums;
+﻿using System.Text.RegularExpressions;
+using Dose.Domain.Enums;
 using FluentValidation;
 
 namespace Dose.Application.Features.Ingredients.Commands;
@@ -16,12 +17,20 @@ public record CreateIngredientCommand(
 
 public class CreateIngredientCommandValidator : AbstractValidator<CreateIngredientCommand>
 {
+    private static readonly Regex SafeInternalImagePathRegex = new(
+        @"^/(api/)?storage/drinks/[a-zA-Z0-9_-]+\.webp$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     public CreateIngredientCommandValidator()
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.SubCategory).NotEmpty().MaximumLength(60);
         RuleFor(x => x.Flavor).MaximumLength(60);
         RuleFor(x => x.Abv).InclusiveBetween(0m, 96m);
+
+        RuleFor(x => x.ImageUrl)
+            .Must(url => string.IsNullOrWhiteSpace(url) || SafeInternalImagePathRegex.IsMatch(url.Trim()))
+            .WithMessage("Invalid image path format. Images must be safely sanitized WebP files stored in /storage/drinks/.");
 
         RuleFor(x => x.Abv)
             .GreaterThan(0m)

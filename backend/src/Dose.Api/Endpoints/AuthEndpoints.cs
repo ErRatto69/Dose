@@ -141,20 +141,6 @@ public class AuthEndpoints : IEndpoint
 
     private static string GetClientIpAddress(HttpContext httpContext)
     {
-        if (httpContext.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor))
-        {
-            string? firstIp = forwardedFor.ToString().Split(',').FirstOrDefault()?.Trim();
-            if (!string.IsNullOrWhiteSpace(firstIp))
-                return firstIp;
-        }
-
-        if (httpContext.Request.Headers.TryGetValue("X-Real-IP", out var realIp))
-        {
-            string ip = realIp.ToString().Trim();
-            if (!string.IsNullOrWhiteSpace(ip))
-                return ip;
-        }
-
         return httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
 }

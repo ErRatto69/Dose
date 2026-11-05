@@ -28,8 +28,6 @@ public static class DependencyInjection
                 npgsqlOptions.MigrationsAssembly(typeof(DoseDbContext).Assembly.FullName);
                 npgsqlOptions.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null);
             });
-            // Ignora il warning dei cambi modello non inclusi nelle migrazioni CLI (gestiti dal DatabaseSeeder)
-            options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<DoseDbContext>());
