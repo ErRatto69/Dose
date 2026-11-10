@@ -1,6 +1,7 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { drinksApi } from '@/api/drinks.api';
+import { queryKeys } from '@/api/queryKeys';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { formatVolume } from '@/utils/units';
@@ -68,6 +69,7 @@ export const DrinkDetailModal: React.FC<DrinkDetailModalProps> = ({
             setComment('');
             queryClient.invalidateQueries({ queryKey: ['drink-reviews', drink?.id] });
             queryClient.invalidateQueries({ queryKey: ['drinks-catalog'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.passport() });
         },
     });
 

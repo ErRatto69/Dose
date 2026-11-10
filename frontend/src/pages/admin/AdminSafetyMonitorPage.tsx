@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { bacApi } from '@/api/bac.api';
+import { queryKeys } from '@/api/queryKeys';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { ShieldAlert, Users, Loader2, Search, X } from 'lucide-react';
 
@@ -19,7 +20,7 @@ export const AdminSafetyMonitorPage: React.FC = () => {
     }, [search]);
 
     const { data: pagedSafety, isLoading } = useQuery({
-        queryKey: ['admin-bac-overview', pageNumber, debouncedSearch],
+        queryKey: queryKeys.bac.adminOverview(pageNumber, debouncedSearch),
         queryFn: () =>
             bacApi.getAdminBacOverview({
                 pageNumber,

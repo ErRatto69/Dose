@@ -1,6 +1,7 @@
-﻿import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { drinksApi } from '@/api/drinks.api';
+import { queryKeys } from '@/api/queryKeys';
 import { matchesSearchQuery } from '@/utils/textSearch';
 import { calculateStrengthMetrics } from '@/utils/strengthCalc';
 import { BottleStrengthMeter } from './BottleStrengthMeter';
@@ -300,6 +301,9 @@ export const CreateDrinkModal: React.FC<CreateDrinkModalProps> = ({
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['drinks-catalog-infinite'] });
             queryClient.invalidateQueries({ queryKey: ['drinks-catalog'] });
+            if (mode !== 'edit') {
+                queryClient.invalidateQueries({ queryKey: queryKeys.gamification.passport() });
+            }
             if (initialDrink) {
                 queryClient.invalidateQueries({ queryKey: ['drink-detail', initialDrink.id] });
             }

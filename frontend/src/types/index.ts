@@ -319,6 +319,44 @@ export interface RankingTier {
     colorHex: string;
 }
 
+export interface MonthlyBadge {
+    key: string;
+    title: string;
+    description: string;
+    category: string;
+    icon: string;
+    tone: string;
+    isEarned: boolean;
+    currentProgress: number;
+    targetProgress: number;
+}
+
+export interface MonthlyBadgesResponse {
+    period: string;
+    resetsAtUtc: string;
+    badges: MonthlyBadge[];
+}
+
+export interface AchievementPassportItem {
+    key: string;
+    title: string;
+    subtitle: string;
+    description: string;
+    category: string;
+    icon: string;
+    isUnlocked: boolean;
+    unlockedAtUtc?: string | null;
+    currentProgress: number;
+    targetProgress: number;
+    progressPercent: number;
+}
+
+export interface AchievementPassportResponse {
+    unlockedCount: number;
+    totalCount: number;
+    achievements: AchievementPassportItem[];
+}
+
 export interface LeaderboardEntry {
     rank: number;
     userId: string;
@@ -329,6 +367,7 @@ export interface LeaderboardEntry {
     currentTier: RankingTier;
     nextTierProgressPercent: number;
     gramsToNextTier: number;
+    monthlyBadges?: MonthlyBadge[];
 }
 
 export interface MonthlyLeaderboardResponse {

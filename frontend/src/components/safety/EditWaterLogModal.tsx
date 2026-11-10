@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { bacApi } from '@/api/bac.api';
+import { queryKeys } from '@/api/queryKeys';
 import { RecentTimePicker } from '@/components/common/RecentTimePicker';
 import type { WaterEvent } from '@/types';
 import { X, Droplets, Check, Loader2, Plus, Minus, AlertCircle } from 'lucide-react';
@@ -55,7 +56,9 @@ export const EditWaterLogModal: React.FC<EditWaterLogModalProps> = ({ event, isO
         try {
             setIsSubmitting(true);
             await bacApi.updateWaterLog(event.id, amountCl, targetDate.toISOString());
-            queryClient.invalidateQueries({ queryKey: ['my-bac-status'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.bac.me() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard.monthly() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.monthlyBadges() });
             onClose();
         } catch (err: unknown) {
             if (err && typeof err === 'object' && 'response' in err) {

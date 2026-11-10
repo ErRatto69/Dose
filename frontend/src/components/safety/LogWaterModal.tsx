@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { bacApi } from '@/api/bac.api';
+import { queryKeys } from '@/api/queryKeys';
 import { X, Droplets, Check, Loader2, Plus, Minus } from 'lucide-react';
 
 interface LogWaterModalProps {
@@ -24,7 +25,10 @@ export const LogWaterModal: React.FC<LogWaterModalProps> = ({ isOpen, onClose })
     const waterMutation = useMutation({
         mutationFn: () => bacApi.logWater(amountCl),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['my-bac-status'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.bac.me() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard.monthly() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.monthlyBadges() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.passport() });
             onClose();
         },
     });

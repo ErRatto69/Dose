@@ -1,6 +1,9 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { bacApi } from '@/api/bac.api';
+import { gamificationApi } from '@/api/gamification.api';
+import { queryKeys } from '@/api/queryKeys';
+import { MonthlyBadgeChip } from '@/components/gamification/MonthlyBadgeChip';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { normalizeUnit } from '@/utils/units';
 import {
@@ -14,6 +17,8 @@ import {
     Loader2,
     Calendar,
     Medal,
+    Sparkles,
+    CheckCircle2,
 } from 'lucide-react';
 
 const TIER_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -37,8 +42,13 @@ export const LeaderboardPage: React.FC = () => {
     const unit = normalizeUnit(preferredUnit);
 
     const { data: leaderboard, isLoading } = useQuery({
-        queryKey: ['monthly-leaderboard'],
+        queryKey: queryKeys.leaderboard.monthly(),
         queryFn: () => bacApi.getLeaderboard(),
+    });
+
+    const { data: myMonthlyBadges } = useQuery({
+        queryKey: queryKeys.gamification.monthlyBadges(),
+        queryFn: () => gamificationApi.getMonthlyBadges(),
     });
 
     if (isLoading || !leaderboard) {
@@ -117,9 +127,18 @@ export const LeaderboardPage: React.FC = () => {
                                             </div>
 
                                             <div>
-                                                <h3 className="text-lg font-black text-white truncate">
-                                                    {entry.username}
-                                                </h3>
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    <h3 className="text-lg font-black text-white truncate">
+                                                        {entry.username}
+                                                    </h3>
+                                                    {entry.monthlyBadges &&
+                                                        entry.monthlyBadges.map((badge) => (
+                                                            <MonthlyBadgeChip
+                                                                key={badge.key}
+                                                                badge={badge}
+                                                            />
+                                                        ))}
+                                                </div>
                                                 <div
                                                     className="flex items-center gap-1.5 text-xs font-bold mt-1"
                                                     style={{ color: entry.currentTier.colorHex }}
@@ -180,9 +199,18 @@ export const LeaderboardPage: React.FC = () => {
                                                 {entry.rank}
                                             </div>
                                             <div>
-                                                <strong className="text-sm font-bold text-white block">
-                                                    {entry.username}
-                                                </strong>
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    <strong className="text-sm font-bold text-white">
+                                                        {entry.username}
+                                                    </strong>
+                                                    {entry.monthlyBadges &&
+                                                        entry.monthlyBadges.map((badge) => (
+                                                            <MonthlyBadgeChip
+                                                                key={badge.key}
+                                                                badge={badge}
+                                                            />
+                                                        ))}
+                                                </div>
                                                 <div className="flex items-center gap-1.5 text-[11px] text-neutral-400 mt-0.5">
                                                     <span
                                                         className="font-bold flex items-center gap-1"
@@ -219,44 +247,116 @@ export const LeaderboardPage: React.FC = () => {
                     )}
                 </div>
 
-                {/* Right Column: Tiers Reference Card */}
-                <div className="lg:col-span-4 p-5 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-4 shadow-xl">
-                    <div>
-                        <h3 className="text-base font-bold text-white">Ranking Tiers</h3>
-                        <p className="text-xs text-neutral-400 mt-0.5">
-                            Monthly tiers unlocked based on cumulative alcohol intake.
-                        </p>
+                {/* Right Column: Tiers & Monthly Badges Cards */}
+                <div className="lg:col-span-4 space-y-5">
+                    <div className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-4 shadow-xl">
+                        <div>
+                            <h3 className="text-base font-bold text-white">Ranking Tiers</h3>
+                            <p className="text-xs text-neutral-400 mt-0.5">
+                                Monthly tiers unlocked based on cumulative alcohol intake.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            {LEAGUE_TIERS_REFERENCE.map((tier) => {
+                                const Icon = TIER_ICONS[tier.icon] || Award;
+                                return (
+                                    <div
+                                        key={tier.name}
+                                        className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 flex items-center justify-between"
+                                    >
+                                        <div className="flex items-center gap-2.5">
+                                            <div
+                                                className="w-8 h-8 rounded-xl flex items-center justify-center bg-neutral-900 border border-neutral-800"
+                                                style={{ color: tier.color }}
+                                            >
+                                                <Icon className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-bold" style={{ color: tier.color }}>
+                                                    {tier.name}
+                                                </div>
+                                                <div className="text-[10px] text-neutral-500">Min. required</div>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs font-mono font-bold text-neutral-300">
+                                            {unit === 'cl' ? `${tier.minCl} cl` : `${tier.minGrams} g`}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
 
-                    <div className="space-y-2">
-                        {LEAGUE_TIERS_REFERENCE.map((tier) => {
-                            const Icon = TIER_ICONS[tier.icon] || Award;
-                            return (
-                                <div
-                                    key={tier.name}
-                                    className="p-3 rounded-2xl bg-neutral-950 border border-neutral-800 flex items-center justify-between"
-                                >
-                                    <div className="flex items-center gap-2.5">
-                                        <div
-                                            className="w-8 h-8 rounded-xl flex items-center justify-center bg-neutral-900 border border-neutral-800"
-                                            style={{ color: tier.color }}
-                                        >
-                                            <Icon className="w-4 h-4" />
-                                        </div>
-                                        <div>
-                                            <div className="text-xs font-bold" style={{ color: tier.color }}>
-                                                {tier.name}
-                                            </div>
-                                            <div className="text-[10px] text-neutral-500">Min. required</div>
-                                        </div>
-                                    </div>
-                                    <span className="text-xs font-mono font-bold text-neutral-300">
-                                        {unit === 'cl' ? `${tier.minCl} cl` : `${tier.minGrams} g`}
-                                    </span>
+                    {myMonthlyBadges && (
+                        <div className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-4 shadow-xl">
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <h3 className="text-base font-bold text-white flex items-center gap-1.5">
+                                        <Sparkles className="w-4 h-4 text-red-500" />
+                                        <span>Your Monthly Badges</span>
+                                    </h3>
+                                    <p className="text-xs text-neutral-400 mt-0.5">
+                                        Dynamic {myMonthlyBadges.period} UTC rolling badges. Resets monthly.
+                                    </p>
                                 </div>
-                            );
-                        })}
-                    </div>
+                                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-neutral-950 border border-neutral-800 text-neutral-300 font-mono">
+                                    {myMonthlyBadges.badges.filter((b) => b.isEarned).length}/
+                                    {myMonthlyBadges.badges.length}
+                                </span>
+                            </div>
+
+                            <div className="space-y-2">
+                                {myMonthlyBadges.badges.map((badge) => {
+                                    const pct =
+                                        badge.targetProgress > 0
+                                            ? Math.min(
+                                                  100,
+                                                  Math.round(
+                                                      (badge.currentProgress / badge.targetProgress) * 100
+                                                  )
+                                              )
+                                            : 0;
+
+                                    return (
+                                        <div
+                                            key={badge.key}
+                                            className={`p-3 rounded-2xl border space-y-2 ${
+                                                badge.isEarned
+                                                    ? 'bg-neutral-950 border-neutral-700'
+                                                    : 'bg-neutral-950/60 border-neutral-800/80 opacity-85'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <MonthlyBadgeChip badge={badge} />
+                                                {badge.isEarned ? (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                        <span>Earned</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[11px] font-mono text-neutral-400">
+                                                        {badge.currentProgress}/{badge.targetProgress}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[11px] text-neutral-400 leading-snug">
+                                                {badge.description}
+                                            </p>
+                                            {!badge.isEarned && (
+                                                <div className="w-full h-1 bg-neutral-900 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-red-600 rounded-full transition-all"
+                                                        style={{ width: `${pct}%` }}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

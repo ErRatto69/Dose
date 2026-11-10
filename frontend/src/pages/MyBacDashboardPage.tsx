@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { bacApi } from '@/api/bac.api';
+import { queryKeys } from '@/api/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { BacGaugeCard } from '@/components/safety/BacGaugeCard';
 import { EditDrinkLogModal } from '@/components/drink/EditDrinkLogModal';
@@ -62,8 +63,9 @@ export const MyBacDashboardPage: React.FC = () => {
     const deleteDrinkMutation = useMutation({
         mutationFn: (logId: string) => bacApi.deleteDrinkLog(logId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['my-bac-status'] });
-            queryClient.invalidateQueries({ queryKey: ['monthly-leaderboard'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.bac.me() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard.monthly() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.monthlyBadges() });
             setDrinkToDelete(null);
         },
     });
@@ -71,7 +73,9 @@ export const MyBacDashboardPage: React.FC = () => {
     const deleteWaterMutation = useMutation({
         mutationFn: (waterId: string) => bacApi.deleteWaterLog(waterId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['my-bac-status'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.bac.me() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard.monthly() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.monthlyBadges() });
             setWaterToDelete(null);
         },
     });

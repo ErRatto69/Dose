@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { bacApi } from '@/api/bac.api';
+import { queryKeys } from '@/api/queryKeys';
 import { RecentTimePicker } from '@/components/common/RecentTimePicker';
 import type { DrinkEvent, CustomIngredientDose, StomachState } from '@/types';
 import { X, Plus, Minus, Check, Loader2, AlertCircle } from 'lucide-react';
@@ -85,8 +86,9 @@ export const EditDrinkLogModal: React.FC<EditDrinkLogModalProps> = ({ event, isO
                 stomachState,
                 components: validComponents.length > 0 ? validComponents : undefined,
             });
-            queryClient.invalidateQueries({ queryKey: ['my-bac-status'] });
-            queryClient.invalidateQueries({ queryKey: ['monthly-leaderboard'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.bac.me() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard.monthly() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.monthlyBadges() });
             onClose();
         } catch (err: unknown) {
             if (err && typeof err === 'object' && 'response' in err) {

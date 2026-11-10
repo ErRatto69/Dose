@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '@/api/users.api';
@@ -7,6 +7,7 @@ import { bacApi } from '@/api/bac.api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { BacGaugeCard } from '@/components/safety/BacGaugeCard';
+import { CocktailPassportSection } from '@/components/gamification/CocktailPassportSection';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import type { BiologicalSex } from '@/types';
 import {
@@ -309,6 +310,9 @@ export const ProfilePage: React.FC = () => {
                         )}
                     </div>
                 </div>
+
+                {/* Cocktail Passport (Lifetime Achievements & Rolling Monthly Badges) */}
+                <CocktailPassportSection />
 
                 {/* My Reviews Section (Paginated) */}
                 <div className="p-6 rounded-3xl bg-neutral-900 border border-neutral-800 shadow-xl space-y-4">

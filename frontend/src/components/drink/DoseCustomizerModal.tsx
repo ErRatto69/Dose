@@ -9,6 +9,7 @@ import { BottleStrengthMeter } from './BottleStrengthMeter';
 import { RecentTimePicker } from '@/components/common/RecentTimePicker';
 import { bacApi } from '@/api/bac.api';
 import { drinksApi } from '@/api/drinks.api';
+import { queryKeys } from '@/api/queryKeys';
 import type { StomachState } from '@/types';
 import {
     X,
@@ -124,8 +125,10 @@ export const DoseCustomizerModal: React.FC<DoseCustomizerModalProps> = ({ onSucc
                     })),
             });
 
-            queryClient.invalidateQueries({ queryKey: ['my-bac-status'] });
-            queryClient.invalidateQueries({ queryKey: ['monthly-leaderboard'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.bac.me() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard.monthly() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.monthlyBadges() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.passport() });
             onSuccessLogged?.();
             closeModal();
         } catch (err) {

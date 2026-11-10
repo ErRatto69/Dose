@@ -1,7 +1,8 @@
-﻿import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { drinksApi } from '@/api/drinks.api';
 import { bacApi } from '@/api/bac.api';
+import { queryKeys } from '@/api/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
 import { formatVolume } from '@/utils/units';
@@ -163,8 +164,10 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
                 })),
             });
 
-            queryClient.invalidateQueries({ queryKey: ['my-bac-status'] });
-            queryClient.invalidateQueries({ queryKey: ['monthly-leaderboard'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.bac.me() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard.monthly() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.monthlyBadges() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.gamification.passport() });
             setItems([]);
             setCustomName('');
             setNotes('');
