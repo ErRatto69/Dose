@@ -4,6 +4,7 @@ import { drinksApi } from '@/api/drinks.api';
 import { useDoseModalStore } from '@/store/useDoseModalStore';
 import type { DrinkDetail, DrinkMatchResult, IngredientCategory } from '@/types';
 import { BottleStrengthMeter } from '@/components/drink/BottleStrengthMeter';
+import { DrinkThumbnail } from '@/components/drink/DrinkThumbnail';
 import { DoseCustomizerModal } from '@/components/drink/DoseCustomizerModal';
 import { DrinkDetailModal } from '@/components/drink/DrinkDetailModal';
 import {
@@ -15,7 +16,6 @@ import {
     X,
     Eye,
     Loader2,
-    Filter,
     Trash2,
 } from 'lucide-react';
 
@@ -37,6 +37,7 @@ export const CabinetMatcherPage: React.FC = () => {
     const [isMatching, setIsMatching] = useState(false);
     const [matchError, setMatchError] = useState<string | null>(null);
     const [viewedDrink, setViewedDrink] = useState<DrinkDetail | null>(null);
+    const [mobilePane, setMobilePane] = useState<'shelf' | 'matches'>('shelf');
 
     const { openModal } = useDoseModalStore();
 
@@ -109,6 +110,7 @@ export const CabinetMatcherPage: React.FC = () => {
             await drinksApi.syncCabinet(ids);
             const results = await drinksApi.matchCabinet(ids);
             setManualMatchResults(results);
+            setMobilePane('matches');
         } catch (err) {
             console.error('Matching failed:', err);
             setMatchError('Unable to match your cabinet right now. Please try again.');
@@ -128,14 +130,15 @@ export const CabinetMatcherPage: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6">
-            <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-5">
+            {/* Open Page Header */}
+            <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
-                        Bar Cabinet Matcher
+                    <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-wide leading-none">
+                        BAR CABINET
                     </h1>
-                    <p className="text-xs sm:text-sm text-zinc-400 mt-1 max-w-2xl">
-                        Pick the bottles and mixers on your shelf. Cocktails with at least 50% matching ingredients appear on the right.
+                    <p className="text-xs sm:text-sm text-zinc-400 mt-1.5">
+                        Check off the bottles on your shelf to surface recipes with ≥50% match.
                     </p>
                 </div>
 
@@ -143,7 +146,7 @@ export const CabinetMatcherPage: React.FC = () => {
                     type="button"
                     onClick={handleMatch}
                     disabled={isMatching || selectedIngredientIds.size === 0}
-                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-extrabold text-sm flex items-center justify-center gap-2 border border-red-500/50 shrink-0 tabular-nums dose-press"
+                    className="min-h-[44px] px-5 py-2.5 rounded-full bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 border border-red-400/40 shrink-0 tabular-nums dose-press"
                 >
                     {isMatching ? (
                         <>
@@ -159,6 +162,40 @@ export const CabinetMatcherPage: React.FC = () => {
                 </button>
             </section>
 
+            {/* Mobile Pane Switcher (Eliminates scrolling 600px down on phone) */}
+            <div
+                className="lg:hidden grid grid-cols-2 p-1 rounded-xl bg-[#111114] border border-white/[0.08]"
+                role="tablist"
+                aria-label="Cabinet view"
+            >
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mobilePane === 'shelf'}
+                    onClick={() => setMobilePane('shelf')}
+                    className={`min-h-[40px] rounded-lg text-xs font-bold tabular-nums dose-press ${
+                        mobilePane === 'shelf'
+                            ? 'bg-red-600 text-white'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                >
+                    My Shelf ({selectedIngredientIds.size})
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mobilePane === 'matches'}
+                    onClick={() => setMobilePane('matches')}
+                    className={`min-h-[40px] rounded-lg text-xs font-bold tabular-nums dose-press ${
+                        mobilePane === 'matches'
+                            ? 'bg-red-600 text-white'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                >
+                    Matches ({matchResults?.length ?? 0})
+                </button>
+            </div>
+
             {matchError && (
                 <div
                     role="alert"
@@ -170,54 +207,50 @@ export const CabinetMatcherPage: React.FC = () => {
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                <div className="lg:col-span-7 space-y-4">
-                    <section className="p-4 rounded-2xl bg-[#111114] border border-white/[0.08]">
-                        <div className="flex items-center justify-between mb-2.5">
-                            <h2 className="text-xs font-bold text-zinc-200 tabular-nums">
-                                On Your Shelf ({selectedIngredientsList.length})
-                            </h2>
-                            {selectedIngredientsList.length > 0 && (
+                {/* Left Pane: Bottle Inventory */}
+                <div className={`lg:col-span-7 space-y-4 ${mobilePane === 'shelf' ? 'block' : 'hidden lg:block'}`}>
+                    {/* Selected Shelf Strip */}
+                    {selectedIngredientsList.length > 0 && (
+                        <div className="p-3.5 rounded-2xl bg-[#111114] border border-white/[0.08]">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold text-zinc-200 tabular-nums">
+                                    Selected ({selectedIngredientsList.length})
+                                </span>
                                 <button
                                     type="button"
                                     onClick={() => {
                                         setSelectedOverride(new Set());
                                         setManualMatchResults(null);
                                     }}
-                                    className="min-h-[32px] px-2 rounded-lg text-xs font-semibold text-zinc-400 hover:text-red-400 flex items-center gap-1 dose-press"
+                                    className="min-h-[30px] px-2 rounded-lg text-xs font-semibold text-zinc-400 hover:text-red-400 flex items-center gap-1 dose-press"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                                    <span>Clear all</span>
+                                    <span>Clear</span>
                                 </button>
-                            )}
-                        </div>
-
-                        {selectedIngredientsList.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto overscroll-contain">
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto overscroll-contain">
                                 {selectedIngredientsList.map((ing) => (
                                     <span
                                         key={ing.id}
-                                        className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-xl text-xs font-semibold bg-red-600/15 border border-red-500/40 text-red-100"
+                                        className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full text-xs font-semibold bg-red-600/15 border border-red-500/40 text-red-100"
                                     >
                                         <span>{ing.name}</span>
                                         <button
                                             type="button"
                                             onClick={() => toggleIngredient(ing.id)}
                                             aria-label={`Remove ${ing.name} from shelf`}
-                                            className="w-6 h-6 rounded-lg hover:bg-red-500/30 flex items-center justify-center text-red-200 hover:text-white"
+                                            className="w-6 h-6 rounded-full hover:bg-red-500/30 flex items-center justify-center text-red-200 hover:text-white"
                                         >
-                                            <X className="w-3.5 h-3.5" aria-hidden="true" />
+                                            <X className="w-3 h-3" aria-hidden="true" />
                                         </button>
                                     </span>
                                 ))}
                             </div>
-                        ) : (
-                            <p className="text-xs text-zinc-400">
-                                No bottles selected yet. Choose spirits and mixers below.
-                            </p>
-                        )}
-                    </section>
+                        </div>
+                    )}
 
-                    <section className="p-4 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-4">
+                    {/* Direct Search + Underline Category Bar + Checklist */}
+                    <div className="space-y-3">
                         <div className="relative">
                             <Search
                                 className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -228,7 +261,7 @@ export const CabinetMatcherPage: React.FC = () => {
                                 aria-label="Filter cabinet ingredients"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Filter ingredients (e.g., Gin, Bourbon, Vermouth)…"
+                                placeholder="Filter bottles (e.g., Gin, Bourbon, Vermouth)…"
                                 className="w-full min-h-[44px] pl-10 pr-10 py-2.5 rounded-xl text-sm dose-input"
                             />
                             {searchQuery && (
@@ -243,57 +276,68 @@ export const CabinetMatcherPage: React.FC = () => {
                             )}
                         </div>
 
-                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar" role="group" aria-label="Ingredient category">
-                            <Filter className="w-3.5 h-3.5 text-zinc-400 shrink-0 mr-1" aria-hidden="true" />
-                            {CATEGORY_TABS.map((tab) => (
-                                <button
-                                    key={tab.value}
-                                    type="button"
-                                    aria-pressed={activeCategory === tab.value}
-                                    onClick={() => setActiveCategory(tab.value)}
-                                    className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 border dose-press ${
-                                        activeCategory === tab.value
-                                            ? 'bg-red-600 text-white border-red-500/70'
-                                            : 'bg-[#0c0c0f] text-zinc-400 hover:text-zinc-100 border-white/[0.08]'
-                                    }`}
-                                >
-                                    {tab.label}
-                                </button>
-                            ))}
+                        <div
+                            className="border-b border-white/[0.08] flex items-center gap-4 overflow-x-auto no-scrollbar"
+                            role="group"
+                            aria-label="Ingredient category"
+                        >
+                            {CATEGORY_TABS.map((tab) => {
+                                const isActive = activeCategory === tab.value;
+                                return (
+                                    <button
+                                        key={tab.value}
+                                        type="button"
+                                        aria-pressed={isActive}
+                                        onClick={() => setActiveCategory(tab.value)}
+                                        className={`relative min-h-[40px] py-2 text-xs font-bold shrink-0 whitespace-nowrap transition-colors ${
+                                            isActive
+                                                ? 'text-white'
+                                                : 'text-zinc-400 hover:text-zinc-200'
+                                        }`}
+                                    >
+                                        <span>{tab.label}</span>
+                                        {isActive && (
+                                            <span
+                                                className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-500 rounded-full"
+                                                aria-hidden="true"
+                                            />
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
 
                         {isLoadingIngredients ? (
                             <div className="py-12 flex justify-center items-center text-zinc-400 text-xs gap-2">
                                 <Loader2 className="w-4 h-4 animate-spin text-red-500" aria-hidden="true" />
-                                <span>Loading ingredients…</span>
+                                <span>Loading shelf inventory…</span>
                             </div>
                         ) : (
-                            <div className="space-y-5 max-h-[520px] overflow-y-auto overscroll-contain pr-1">
+                            <div className="rounded-2xl bg-[#111114] border border-white/[0.08] divide-y divide-white/[0.06] max-h-[540px] overflow-y-auto overscroll-contain">
                                 {groupedBySubCategory.map(([subCategory, items]) => (
-                                    <div key={subCategory} className="space-y-2">
-                                        <div className="flex items-center justify-between border-b border-white/[0.08] pb-1.5">
-                                            <h3 className="text-xs font-bold text-zinc-200">
+                                    <div key={subCategory} className="p-3.5 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <h2 className="text-xs font-extrabold text-zinc-200">
                                                 {subCategory}
-                                            </h3>
+                                            </h2>
                                             <span className="text-[11px] text-zinc-400 tabular-nums">
-                                                {items.length} items
+                                                {items.length}
                                             </span>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                                             {items.map((ing) => {
                                                 const isSelected = selectedIngredientIds.has(ing.id);
-
                                                 return (
                                                     <button
                                                         key={ing.id}
                                                         type="button"
                                                         aria-pressed={isSelected}
                                                         onClick={() => toggleIngredient(ing.id)}
-                                                        className={`min-h-[48px] p-3 rounded-xl text-left border flex items-center justify-between gap-2 dose-press ${
+                                                        className={`min-h-[44px] px-3 py-2 rounded-xl text-left border flex items-center justify-between gap-2 dose-press ${
                                                             isSelected
-                                                                ? 'bg-red-600/15 border-red-500/70 text-white'
-                                                                : 'bg-[#0c0c0f] border-white/[0.08] text-zinc-300 hover:border-white/20'
+                                                                ? 'bg-red-600/15 border-red-500/65 text-white'
+                                                                : 'bg-[#0c0c0f] border-white/[0.06] text-zinc-300 hover:border-white/20'
                                                         }`}
                                                     >
                                                         <div className="min-w-0">
@@ -301,9 +345,9 @@ export const CabinetMatcherPage: React.FC = () => {
                                                                 {ing.name}
                                                             </div>
                                                             {(ing.flavor || ing.abv > 0) && (
-                                                                <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-zinc-400">
+                                                                <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
                                                                     {ing.flavor && (
-                                                                        <span className="px-1.5 py-0.2 rounded bg-red-950/70 text-red-300 font-semibold text-[10px]">
+                                                                        <span className="text-red-300 font-medium">
                                                                             {ing.flavor}
                                                                         </span>
                                                                     )}
@@ -324,9 +368,7 @@ export const CabinetMatcherPage: React.FC = () => {
                                                             }`}
                                                             aria-hidden="true"
                                                         >
-                                                            {isSelected && (
-                                                                <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                                            )}
+                                                            {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                                                         </div>
                                                     </button>
                                                 );
@@ -336,51 +378,79 @@ export const CabinetMatcherPage: React.FC = () => {
                                 ))}
 
                                 {groupedBySubCategory.length === 0 && (
-                                    <p className="text-xs text-center text-zinc-400 py-8">
+                                    <p className="text-xs text-center text-zinc-400 py-10">
                                         No ingredients match your filter.
                                     </p>
                                 )}
                             </div>
                         )}
-                    </section>
+                    </div>
                 </div>
 
-                <div className="lg:col-span-5">
-                    <section className="p-4 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-3">
-                        <h2 className="text-sm font-extrabold text-white tabular-nums">
-                            Available Cocktails {matchResults ? `(${matchResults.length})` : ''}
-                        </h2>
+                {/* Right Pane: Matched Cocktails */}
+                <div className={`lg:col-span-5 ${mobilePane === 'matches' ? 'block' : 'hidden lg:block'}`}>
+                    <section className="rounded-2xl bg-[#111114] border border-white/[0.08] overflow-hidden">
+                        <div className="px-4 py-3.5 border-b border-white/[0.08] bg-[#0c0c0f] flex items-center justify-between">
+                            <h2 className="text-sm font-extrabold text-white tabular-nums">
+                                Available Cocktails {matchResults ? `(${matchResults.length})` : ''}
+                            </h2>
+                            <span className="text-[11px] text-zinc-400">≥50% match</span>
+                        </div>
 
                         {!matchResults ? (
-                            <div className="py-16 text-center text-zinc-400 text-xs space-y-2">
+                            <div className="py-16 px-4 text-center text-zinc-400 text-xs space-y-2">
                                 <Sparkles className="w-7 h-7 mx-auto text-zinc-500" aria-hidden="true" />
-                                <p>Select your bottles and press &ldquo;Find Drinks&rdquo;.</p>
+                                <p>Pick your bottles on the shelf and press &ldquo;Find Drinks&rdquo;.</p>
                             </div>
                         ) : matchResults.length === 0 ? (
-                            <div className="py-16 text-center text-zinc-400 text-xs leading-relaxed px-4">
-                                No cocktails found with at least 50% ingredient match. Try adding a core spirit or mixer.
+                            <div className="py-16 px-4 text-center text-zinc-400 text-xs leading-relaxed">
+                                No cocktails reached 50% match. Add a spirit or mixer and try again.
                             </div>
                         ) : (
-                            <div className="space-y-3 max-h-[640px] overflow-y-auto overscroll-contain pr-1">
+                            <div className="divide-y divide-white/[0.06] max-h-[640px] overflow-y-auto overscroll-contain">
                                 {matchResults.map((result) => {
                                     const isExact = result.matchType === 'EXACT';
 
                                     return (
                                         <div
                                             key={result.drinkId}
-                                            className={`p-4 rounded-2xl border flex flex-col gap-3 ${
-                                                isExact
-                                                    ? 'bg-emerald-950/20 border-emerald-600/45'
-                                                    : 'bg-[#0c0c0f] border-white/[0.08]'
+                                            className={`p-4 space-y-3 ${
+                                                isExact ? 'bg-emerald-950/15' : ''
                                             }`}
                                         >
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div className="min-w-0">
-                                                    <h3 className="text-base font-extrabold text-white truncate">
-                                                        {result.name}
-                                                    </h3>
+                                            <div className="flex items-start gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenDrink(result.drinkId, 'view')}
+                                                    aria-label={`View ${result.name} recipe`}
+                                                    className="rounded-xl shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dose-press"
+                                                >
+                                                    <DrinkThumbnail
+                                                        imageUrl={result.imageUrl}
+                                                        alt={result.name}
+                                                        sizeClass="w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-xl"
+                                                        iconClass="w-6 h-6"
+                                                    />
+                                                </button>
+
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenDrink(result.drinkId, 'view')}
+                                                            className="text-left min-w-0 hover:text-red-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded"
+                                                        >
+                                                            <h3 className="font-display text-xl font-bold tracking-wide text-white leading-tight truncate">
+                                                                {result.name}
+                                                            </h3>
+                                                        </button>
+                                                        <span className="text-xs tabular-nums font-extrabold text-zinc-200 shrink-0 pt-0.5">
+                                                            {result.matchPercentage}%
+                                                        </span>
+                                                    </div>
+
                                                     <span
-                                                        className={`inline-flex items-center gap-1 mt-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                                                        className={`inline-flex items-center gap-1 mt-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
                                                             isExact
                                                                 ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                                                                 : 'bg-red-500/15 text-red-300 border border-red-500/30'
@@ -394,10 +464,6 @@ export const CabinetMatcherPage: React.FC = () => {
                                                         <span>{result.matchSummaryBadge}</span>
                                                     </span>
                                                 </div>
-
-                                                <span className="text-xs tabular-nums font-bold text-zinc-300 shrink-0">
-                                                    {result.matchPercentage}% match
-                                                </span>
                                             </div>
 
                                             <BottleStrengthMeter
@@ -406,23 +472,23 @@ export const CabinetMatcherPage: React.FC = () => {
                                                 compact
                                             />
 
-                                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/[0.06]">
+                                            <div className="flex items-center justify-between gap-2 pt-1">
                                                 <button
                                                     type="button"
                                                     onClick={() => handleOpenDrink(result.drinkId, 'view')}
-                                                    className="min-h-[42px] rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-200 font-bold text-xs flex items-center justify-center gap-1.5 dose-press"
+                                                    className="min-h-[38px] px-3.5 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] text-zinc-200 font-bold text-xs flex items-center gap-1.5 dose-press"
                                                 >
                                                     <Eye className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
-                                                    <span>View Recipe</span>
+                                                    <span>Recipe</span>
                                                 </button>
 
                                                 <button
                                                     type="button"
                                                     onClick={() => handleOpenDrink(result.drinkId, 'drink')}
-                                                    className="min-h-[42px] rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 border border-red-500/40 dose-press"
+                                                    className="min-h-[38px] px-4 rounded-full bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs flex items-center gap-1.5 border border-red-400/40 dose-press"
                                                 >
-                                                    <Plus className="w-4 h-4 stroke-[2.5]" aria-hidden="true" />
-                                                    <span>Drink Now</span>
+                                                    <Plus className="w-3.5 h-3.5 stroke-[2.75]" aria-hidden="true" />
+                                                    <span>Pour</span>
                                                 </button>
                                             </div>
                                         </div>

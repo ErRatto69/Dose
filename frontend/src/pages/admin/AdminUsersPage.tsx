@@ -210,8 +210,8 @@ export const AdminUsersPage: React.FC = () => {
                 {/* Page Header */}
                 <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
-                            User Management
+                        <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-wide leading-none">
+                            USER MANAGEMENT
                         </h1>
                         <p className="text-xs sm:text-sm text-zinc-400 mt-1">
                             Manage bar guest accounts, roles, biometrics, and pending access requests.

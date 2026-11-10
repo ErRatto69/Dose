@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { bacApi } from '@/api/bac.api';
@@ -34,7 +34,12 @@ import {
     HeartPulse,
     Award,
     Plus,
+    Wine,
 } from 'lucide-react';
+
+type SessionTimelineEntry =
+    | { kind: 'drink'; id: string; consumedAt: string; data: DrinkEvent }
+    | { kind: 'water'; id: string; consumedAt: string; data: WaterEvent };
 
 export const MyBacDashboardPage: React.FC = () => {
     const { user } = useAuthStore();
@@ -78,19 +83,31 @@ export const MyBacDashboardPage: React.FC = () => {
         },
     });
 
+    const timelineEntries = useMemo<SessionTimelineEntry[]>(() => {
+        if (!bacData) return [];
+        const drinks: SessionTimelineEntry[] = (bacData.activeLogsLast12h ?? []).map((d) => ({
+            kind: 'drink',
+            id: `drink-${d.logId}`,
+            consumedAt: d.consumedAt,
+            data: d,
+        }));
+        const waters: SessionTimelineEntry[] = (bacData.activeWaterLogsLast12h ?? []).map((w) => ({
+            kind: 'water',
+            id: `water-${w.id}`,
+            consumedAt: w.consumedAt,
+            data: w,
+        }));
+        return [...drinks, ...waters].sort(
+            (a, b) => new Date(b.consumedAt).getTime() - new Date(a.consumedAt).getTime()
+        );
+    }, [bacData]);
+
     if (isLoading) {
         return (
             <div className="space-y-6" aria-busy="true" aria-label="Loading BAC telemetry">
-                <div className="h-14 w-72 rounded-2xl bg-[#111114] border border-white/[0.08]" />
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                        <div key={i} className="h-28 rounded-2xl bg-[#111114] border border-white/[0.08]" />
-                    ))}
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    <div className="lg:col-span-5 h-72 rounded-2xl bg-[#111114] border border-white/[0.08]" />
-                    <div className="lg:col-span-7 h-72 rounded-2xl bg-[#111114] border border-white/[0.08]" />
-                </div>
+                <div className="h-12 w-56 rounded-xl bg-[#111114] border border-white/[0.08]" />
+                <div className="h-[420px] rounded-2xl bg-[#111114] border border-white/[0.08]" />
+                <div className="h-48 rounded-2xl bg-[#111114] border border-white/[0.08]" />
             </div>
         );
     }
@@ -129,158 +146,47 @@ export const MyBacDashboardPage: React.FC = () => {
         ? `${(totalWaterCl / 100).toFixed(2)} L`
         : `${Math.round(totalWaterCl)} cl`;
 
-    const activeWaterLogs = bacData.activeWaterLogsLast12h ?? [];
-
     return (
         <div className="space-y-6">
-            {/* Page Header */}
-            <section className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            {/* Open Page Header */}
+            <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
-                        My BAC &amp; Bio-Telemetry
+                    <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-wide leading-none">
+                        MY BAC TELEMETRY
                     </h1>
-                    <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-                        Real-time blood alcohol curve, hydration balance, calories, and 12-hour editable logs.
+                    <p className="text-xs sm:text-sm text-zinc-400 mt-1.5">
+                        Real-time metabolic curve, hydration balance, and 12-hour bar log.
                     </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
-                    <button
-                        type="button"
-                        onClick={() => setIsWaterModalOpen(true)}
-                        className="min-h-[42px] px-4 py-2 rounded-xl bg-sky-950/60 hover:bg-sky-900/75 border border-sky-500/35 text-sky-200 font-bold text-xs flex items-center gap-2 dose-press"
+                {user && (
+                    <Link
+                        to="/profile"
+                        className="self-start sm:self-auto min-h-[38px] px-3.5 py-1.5 rounded-full bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-xs font-bold text-zinc-200 inline-flex items-center gap-2 tabular-nums dose-press"
                     >
-                        <Droplets className="w-4 h-4 text-sky-400" aria-hidden="true" />
-                        <span>Log Water</span>
-                    </button>
-
-                    {user && (
-                        <Link
-                            to="/profile"
-                            className="min-h-[42px] px-3.5 py-2 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-xs font-bold text-zinc-200 flex items-center gap-2 tabular-nums dose-press"
-                        >
-                            <UserCheck className="w-4 h-4 text-red-400" aria-hidden="true" />
-                            <span>{user.weightKg} kg · {user.sex}</span>
-                        </Link>
-                    )}
-                </div>
+                        <UserCheck className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
+                        <span>{user.weightKg} kg · {user.sex}</span>
+                    </Link>
+                )}
             </section>
 
-            {/* 4 Telemetry Readout Cards */}
-            <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5" aria-label="12-hour bio-telemetry summary">
-                {/* 1. Hangover Risk */}
-                <div className="p-4 rounded-2xl bg-[#111114] border border-white/[0.08] flex flex-col justify-between gap-3">
-                    <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-zinc-400 flex items-center gap-1.5">
-                            <HeartPulse className="w-4 h-4 text-rose-400" aria-hidden="true" />
-                            <span>Hangover Risk</span>
-                        </span>
-                        <span
-                            className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                                bacData.hangoverRiskPercent > 60
-                                    ? 'bg-red-500/15 text-red-300'
-                                    : bacData.hangoverRiskPercent > 30
-                                        ? 'bg-amber-500/15 text-amber-300'
-                                        : 'bg-emerald-500/15 text-emerald-300'
-                            }`}
-                        >
-                            {bacData.hangoverRiskPercent > 60 ? 'High' : bacData.hangoverRiskPercent > 30 ? 'Moderate' : 'Low'}
-                        </span>
+            {/* Unified Instrument Telemetry Console (Zero 4-Card Clutter) */}
+            <section className="rounded-2xl bg-[#111114] border border-white/[0.08] overflow-hidden">
+                {/* Upper Split: Calibrated Dial + Elimination Curve */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-white/[0.08]">
+                    <div className="lg:col-span-5">
+                        <BacGaugeCard
+                            embedded
+                            bacGramsPerLiter={bacData.currentBacGramsPerLiter}
+                            bacGramsPerDl={bacData.currentBacGramsPerDl}
+                            safetyLevel={bacData.safetyLevel}
+                            safetyMessage={bacData.safetyMessage}
+                            estimatedSoberAt={bacData.estimatedSoberAt}
+                            totalAlcoholGramsLast12h={bacData.totalAlcoholGramsLast12h}
+                        />
                     </div>
-                    <div>
-                        <strong className="text-2xl font-extrabold tabular-nums text-white">
-                            {bacData.hangoverRiskPercent}%
-                        </strong>
-                        <div className="w-full h-1.5 bg-[#0c0c0f] rounded-full mt-2 overflow-hidden">
-                            <div
-                                className={`h-full rounded-full transition-[width] duration-500 ${
-                                    bacData.hangoverRiskPercent > 60
-                                        ? 'bg-red-500'
-                                        : bacData.hangoverRiskPercent > 30
-                                            ? 'bg-amber-500'
-                                            : 'bg-emerald-500'
-                                }`}
-                                style={{ width: `${bacData.hangoverRiskPercent}%` }}
-                            />
-                        </div>
-                    </div>
-                </div>
 
-                {/* 2. Hydration Tracker (button, not clickable div) */}
-                <button
-                    type="button"
-                    onClick={() => setIsWaterModalOpen(true)}
-                    className="text-left p-4 rounded-2xl bg-[#111114] hover:bg-[#16161b] border border-white/[0.08] hover:border-sky-500/45 flex flex-col justify-between gap-3 dose-press group"
-                >
-                    <div className="w-full flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-zinc-400 group-hover:text-sky-300 flex items-center gap-1.5">
-                            <Droplets className="w-4 h-4 text-sky-400" aria-hidden="true" />
-                            <span>Water Intake</span>
-                        </span>
-                        <Plus className="w-4 h-4 text-sky-400" aria-hidden="true" />
-                    </div>
-                    <div>
-                        <strong className="text-2xl font-extrabold tabular-nums text-white block">
-                            {waterVolumeLabel}
-                        </strong>
-                        <span className="text-[11px] text-sky-400 font-semibold mt-0.5 block tabular-nums">
-                            {bacData.waterLogsCountLast12h} entry(ies) in 12h
-                        </span>
-                    </div>
-                </button>
-
-                {/* 3. Calories */}
-                <div className="p-4 rounded-2xl bg-[#111114] border border-white/[0.08] flex flex-col justify-between gap-3">
-                    <span className="text-xs font-semibold text-zinc-400 flex items-center gap-1.5">
-                        <Flame className="w-4 h-4 text-amber-400" aria-hidden="true" />
-                        <span>Alcohol Kcal</span>
-                    </span>
-                    <div>
-                        <strong className="text-2xl font-extrabold tabular-nums text-white">
-                            {bacData.totalKcalLast12h}{' '}
-                            <span className="text-xs font-medium text-zinc-400">kcal</span>
-                        </strong>
-                        <span className="text-[11px] text-zinc-400 block mt-0.5 truncate tabular-nums">
-                            ≈ {workoutEquivalenceMinutes} min cardio
-                        </span>
-                    </div>
-                </div>
-
-                {/* 4. Safe Score */}
-                <div className="p-4 rounded-2xl bg-[#111114] border border-white/[0.08] flex flex-col justify-between gap-3">
-                    <span className="text-xs font-semibold text-zinc-400 flex items-center gap-1.5">
-                        <Award className="w-4 h-4 text-emerald-400" aria-hidden="true" />
-                        <span>Safe Score</span>
-                    </span>
-                    <div>
-                        <strong className="text-2xl font-extrabold tabular-nums text-emerald-400">
-                            {bacData.responsibleDrinkingScore}{' '}
-                            <span className="text-xs font-medium text-zinc-400">pts</span>
-                        </strong>
-                        <span className="text-[11px] text-zinc-400 block mt-0.5">
-                            Pacing &amp; hydration points
-                        </span>
-                    </div>
-                </div>
-            </section>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Left Column: Semicircular Instrument Gauge */}
-                <div className="lg:col-span-5">
-                    <BacGaugeCard
-                        bacGramsPerLiter={bacData.currentBacGramsPerLiter}
-                        bacGramsPerDl={bacData.currentBacGramsPerDl}
-                        safetyLevel={bacData.safetyLevel}
-                        safetyMessage={bacData.safetyMessage}
-                        estimatedSoberAt={bacData.estimatedSoberAt}
-                        totalAlcoholGramsLast12h={bacData.totalAlcoholGramsLast12h}
-                    />
-                </div>
-
-                {/* Right Column: Elimination Curve + Logs */}
-                <div className="lg:col-span-7 space-y-6">
-                    {/* Elimination Chart */}
-                    <section className="p-5 rounded-2xl bg-[#111114] border border-white/[0.08]">
+                    <div className="lg:col-span-7 p-5 sm:p-6 flex flex-col justify-between">
                         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                             <div className="flex items-center gap-2">
                                 <Activity className="w-4 h-4 text-red-400" aria-hidden="true" />
@@ -288,16 +194,16 @@ export const MyBacDashboardPage: React.FC = () => {
                                     Elimination Curve
                                 </h2>
                             </div>
-                            <span className="text-xs text-zinc-400 tabular-nums">
-                                Clearance: -0.15 g/L per hour
+                            <span className="text-[11px] text-zinc-400 tabular-nums">
+                                Clearance: -0.15 g/L / hr
                             </span>
                         </div>
 
-                        <div className="w-full h-56">
+                        <div className="w-full h-52 sm:h-60">
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart
                                     data={chartData}
-                                    margin={{ top: 10, right: 12, left: -16, bottom: 0 }}
+                                    margin={{ top: 10, right: 10, left: -18, bottom: 0 }}
                                 >
                                     <defs>
                                         <linearGradient id="doseBacFill" x1="0" y1="0" x2="0" y2="1">
@@ -346,114 +252,192 @@ export const MyBacDashboardPage: React.FC = () => {
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
-                    </section>
+                    </div>
+                </div>
 
-                    {/* Active Drinks in Last 12h */}
-                    <section className="p-5 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                            <h2 className="text-sm font-extrabold text-zinc-100 flex items-center gap-1.5">
-                                <Clock className="w-4 h-4 text-red-400" aria-hidden="true" />
-                                <span>Drinks in Last 12 Hours ({bacData.activeLogsLast12h.length})</span>
-                            </h2>
-                            <span className="text-[11px] text-zinc-400">Editable for 12h</span>
-                        </div>
-
-                        {bacData.activeLogsLast12h.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                {bacData.activeLogsLast12h.map((drink) => (
-                                    <div
-                                        key={drink.logId}
-                                        className="p-3.5 rounded-xl bg-[#0c0c0f] border border-white/[0.08] flex items-center justify-between gap-2 text-xs"
-                                    >
-                                        <div className="min-w-0">
-                                            <div className="font-bold text-zinc-100 truncate flex items-center gap-1.5">
-                                                <span className="truncate">{drink.drinkName}</span>
-                                                {drink.stomachState && drink.stomachState !== 'LightSnack' && (
-                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-300 shrink-0">
-                                                        {drink.stomachState === 'Empty' ? 'Empty' : 'Full Meal'}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="text-[11px] text-zinc-400 tabular-nums mt-0.5">
-                                                {new Date(drink.consumedAt).toLocaleTimeString([], {
-                                                    hour: '2-digit',
-                                                    minute: '2-digit',
-                                                })}{' '}
-                                                ·{' '}
-                                                <strong className="text-red-400">
-                                                    +{drink.pureAlcoholGrams.toFixed(1)} g
-                                                </strong>
-                                                {drink.totalKcal ? (
-                                                    <span className="text-amber-300 ml-1.5">
-                                                        ({drink.totalKcal} kcal)
-                                                    </span>
-                                                ) : null}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            <button
-                                                type="button"
-                                                onClick={() => setEditingEvent(drink)}
-                                                aria-label={`Edit ${drink.drinkName} log`}
-                                                className="w-9 h-9 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-300 hover:text-white flex items-center justify-center dose-press"
-                                            >
-                                                <Edit3 className="w-3.5 h-3.5" aria-hidden="true" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setDrinkToDelete(drink)}
-                                                aria-label={`Delete ${drink.drinkName} log`}
-                                                className="w-9 h-9 rounded-xl bg-[#111114] hover:bg-red-950/60 border border-white/[0.08] text-zinc-400 hover:text-red-400 flex items-center justify-center dose-press"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="p-5 rounded-xl bg-[#0c0c0f] border border-white/[0.08] text-center text-xs text-zinc-400 flex items-center justify-center gap-2">
-                                <ShieldCheck className="w-4 h-4 text-emerald-400" aria-hidden="true" />
-                                <span>No drinks logged in the last 12 hours.</span>
-                            </div>
-                        )}
-                    </section>
-
-                    {/* Active Water Logs in Last 12h */}
-                    <section className="p-5 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                            <h2 className="text-sm font-extrabold text-sky-300 flex items-center gap-1.5">
-                                <Droplets className="w-4 h-4 text-sky-400" aria-hidden="true" />
-                                <span>Water Logs in Last 12 Hours ({activeWaterLogs.length})</span>
-                            </h2>
-                            <button
-                                type="button"
-                                onClick={() => setIsWaterModalOpen(true)}
-                                className="min-h-[34px] px-2.5 rounded-lg text-xs font-bold text-sky-400 hover:text-sky-300 hover:bg-white/[0.04] flex items-center gap-1 dose-press"
+                {/* Lower 2x2 / 4x1 Hairline Telemetry Strip */}
+                <div
+                    className="border-t border-white/[0.08] bg-[#0d0d10] grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-white/[0.07]"
+                    aria-label="12-hour bio-telemetry metrics"
+                >
+                    <div className="p-4 space-y-1.5">
+                        <div className="flex items-center justify-between gap-1.5">
+                            <span className="text-[11px] font-bold text-zinc-400 flex items-center gap-1.5">
+                                <HeartPulse className="w-3.5 h-3.5 text-rose-400" aria-hidden="true" />
+                                <span>Hangover</span>
+                            </span>
+                            <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                    bacData.hangoverRiskPercent > 60
+                                        ? 'bg-red-500/15 text-red-300'
+                                        : bacData.hangoverRiskPercent > 30
+                                            ? 'bg-amber-500/15 text-amber-300'
+                                            : 'bg-emerald-500/15 text-emerald-300'
+                                }`}
                             >
-                                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-                                <span>Add Water</span>
-                            </button>
+                                {bacData.hangoverRiskPercent > 60 ? 'High' : bacData.hangoverRiskPercent > 30 ? 'Med' : 'Low'}
+                            </span>
                         </div>
+                        <strong className="text-xl font-extrabold tabular-nums text-white block">
+                            {bacData.hangoverRiskPercent}%
+                        </strong>
+                    </div>
 
-                        {activeWaterLogs.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                {activeWaterLogs.map((water) => (
-                                    <div
-                                        key={water.id}
-                                        className="p-3.5 rounded-xl bg-[#0c0c0f] border border-white/[0.08] flex items-center justify-between gap-2 text-xs"
-                                    >
-                                        <div className="min-w-0">
-                                            <div className="font-bold text-zinc-100 flex items-center gap-1.5 tabular-nums">
-                                                <span className="text-sky-400 font-extrabold">{water.amountCl} cl</span>
-                                                <span className="text-zinc-400 text-[11px]">({water.amountCl * 10} ml)</span>
+                    <button
+                        type="button"
+                        onClick={() => setIsWaterModalOpen(true)}
+                        className="text-left p-4 space-y-1.5 hover:bg-sky-950/25 dose-press group"
+                    >
+                        <div className="flex items-center justify-between gap-1.5">
+                            <span className="text-[11px] font-bold text-zinc-400 group-hover:text-sky-300 flex items-center gap-1.5">
+                                <Droplets className="w-3.5 h-3.5 text-sky-400" aria-hidden="true" />
+                                <span>Water</span>
+                            </span>
+                            <Plus className="w-3.5 h-3.5 text-sky-400" aria-hidden="true" />
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <strong className="text-xl font-extrabold tabular-nums text-white">
+                                {waterVolumeLabel}
+                            </strong>
+                            <span className="text-[11px] text-sky-400 font-semibold tabular-nums">
+                                ({bacData.waterLogsCountLast12h})
+                            </span>
+                        </div>
+                    </button>
+
+                    <div className="p-4 space-y-1.5">
+                        <span className="text-[11px] font-bold text-zinc-400 flex items-center gap-1.5">
+                            <Flame className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
+                            <span>Calories</span>
+                        </span>
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                            <strong className="text-xl font-extrabold tabular-nums text-white">
+                                {bacData.totalKcalLast12h}
+                            </strong>
+                            <span className="text-[11px] text-zinc-400 tabular-nums">
+                                kcal · ~{workoutEquivalenceMinutes}m run
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="p-4 space-y-1.5">
+                        <span className="text-[11px] font-bold text-zinc-400 flex items-center gap-1.5">
+                            <Award className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+                            <span>Safe Score</span>
+                        </span>
+                        <div className="flex items-baseline gap-1.5">
+                            <strong className="text-xl font-extrabold tabular-nums text-emerald-400">
+                                {bacData.responsibleDrinkingScore}
+                            </strong>
+                            <span className="text-[11px] text-zinc-400">pts</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Chronological 12-Hour Session Timeline */}
+            <section className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                    <div>
+                        <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-red-400" aria-hidden="true" />
+                            <span>12-Hour Session Log ({timelineEntries.length})</span>
+                        </h2>
+                        <p className="text-[11px] text-zinc-400 mt-0.5">
+                            Tap edit or delete on any pour or water entry within 12 hours.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsWaterModalOpen(true)}
+                        className="min-h-[38px] px-3.5 rounded-full bg-sky-950/60 hover:bg-sky-900/75 border border-sky-500/35 text-sky-200 text-xs font-bold flex items-center gap-1.5 dose-press"
+                    >
+                        <Plus className="w-3.5 h-3.5 text-sky-400" aria-hidden="true" />
+                        <span>Water</span>
+                    </button>
+                </div>
+
+                {timelineEntries.length > 0 ? (
+                    <div className="rounded-2xl bg-[#111114] border border-white/[0.08] p-4 sm:p-5">
+                        <div className="relative pl-6 border-l border-white/[0.12] space-y-4">
+                            {timelineEntries.map((entry) => {
+                                const timeLabel = new Date(entry.consumedAt).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                });
+
+                                if (entry.kind === 'drink') {
+                                    const drink = entry.data;
+                                    return (
+                                        <div key={entry.id} className="relative flex items-center justify-between gap-3">
+                                            <span
+                                                className="absolute -left-[29px] top-1.5 w-3 h-3 rounded-full bg-red-500 ring-4 ring-[#111114]"
+                                                aria-hidden="true"
+                                            />
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-[11px] font-bold text-zinc-400 tabular-nums">
+                                                        {timeLabel}
+                                                    </span>
+                                                    <span className="inline-flex items-center gap-1 text-sm font-bold text-white truncate">
+                                                        <Wine className="w-3.5 h-3.5 text-red-400 shrink-0" aria-hidden="true" />
+                                                        <span className="truncate">{drink.drinkName}</span>
+                                                    </span>
+                                                    {drink.stomachState && drink.stomachState !== 'LightSnack' && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-300">
+                                                            {drink.stomachState === 'Empty' ? 'Empty' : 'Full Meal'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-zinc-400 tabular-nums mt-0.5">
+                                                    <strong className="text-red-400">+{drink.pureAlcoholGrams.toFixed(1)} g</strong>
+                                                    {drink.totalKcal ? (
+                                                        <span className="text-amber-300 ml-2">{drink.totalKcal} kcal</span>
+                                                    ) : null}
+                                                </div>
                                             </div>
-                                            <div className="text-[11px] text-zinc-400 tabular-nums mt-0.5">
-                                                {new Date(water.consumedAt).toLocaleTimeString([], {
-                                                    hour: '2-digit',
-                                                    minute: '2-digit',
-                                                })}
+
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingEvent(drink)}
+                                                    aria-label={`Edit ${drink.drinkName} log`}
+                                                    className="w-9 h-9 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] text-zinc-300 hover:text-white flex items-center justify-center dose-press"
+                                                >
+                                                    <Edit3 className="w-3.5 h-3.5" aria-hidden="true" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDrinkToDelete(drink)}
+                                                    aria-label={`Delete ${drink.drinkName} log`}
+                                                    className="w-9 h-9 rounded-xl bg-[#0c0c0f] hover:bg-red-950/60 border border-white/[0.08] text-zinc-400 hover:text-red-400 flex items-center justify-center dose-press"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                const water = entry.data;
+                                return (
+                                    <div key={entry.id} className="relative flex items-center justify-between gap-3">
+                                        <span
+                                            className="absolute -left-[29px] top-1.5 w-3 h-3 rounded-full bg-sky-400 ring-4 ring-[#111114]"
+                                            aria-hidden="true"
+                                        />
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-[11px] font-bold text-zinc-400 tabular-nums">
+                                                    {timeLabel}
+                                                </span>
+                                                <span className="inline-flex items-center gap-1 text-sm font-bold text-sky-300 tabular-nums">
+                                                    <Droplets className="w-3.5 h-3.5 text-sky-400 shrink-0" aria-hidden="true" />
+                                                    <span>{water.amountCl} cl Water</span>
+                                                </span>
+                                                <span className="text-[11px] text-zinc-400 tabular-nums">
+                                                    ({water.amountCl * 10} ml)
+                                                </span>
                                             </div>
                                         </div>
 
@@ -462,7 +446,7 @@ export const MyBacDashboardPage: React.FC = () => {
                                                 type="button"
                                                 onClick={() => setEditingWater(water)}
                                                 aria-label="Edit water log"
-                                                className="w-9 h-9 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-300 hover:text-white flex items-center justify-center dose-press"
+                                                className="w-9 h-9 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] text-zinc-300 hover:text-white flex items-center justify-center dose-press"
                                             >
                                                 <Edit3 className="w-3.5 h-3.5" aria-hidden="true" />
                                             </button>
@@ -470,23 +454,23 @@ export const MyBacDashboardPage: React.FC = () => {
                                                 type="button"
                                                 onClick={() => setWaterToDelete(water)}
                                                 aria-label="Delete water log"
-                                                className="w-9 h-9 rounded-xl bg-[#111114] hover:bg-red-950/60 border border-white/[0.08] text-zinc-400 hover:text-red-400 flex items-center justify-center dose-press"
+                                                className="w-9 h-9 rounded-xl bg-[#0c0c0f] hover:bg-red-950/60 border border-white/[0.08] text-zinc-400 hover:text-red-400 flex items-center justify-center dose-press"
                                             >
                                                 <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                                             </button>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="p-5 rounded-xl bg-[#0c0c0f] border border-white/[0.08] text-center text-xs text-zinc-400 flex items-center justify-center gap-2">
-                                <Droplets className="w-4 h-4 text-sky-400" aria-hidden="true" />
-                                <span>No water logged in the last 12 hours. Hydrate to pace your session.</span>
-                            </div>
-                        )}
-                    </section>
-                </div>
-            </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="p-6 rounded-2xl bg-[#111114] border border-white/[0.08] text-center text-xs text-zinc-400 flex items-center justify-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" aria-hidden="true" />
+                        <span>No drinks or water logged in the last 12 hours.</span>
+                    </div>
+                )}
+            </section>
 
             <EditDrinkLogModal
                 event={editingEvent}

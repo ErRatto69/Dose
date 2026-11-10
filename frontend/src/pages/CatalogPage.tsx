@@ -45,7 +45,6 @@ export const CatalogPage: React.FC = () => {
     const [actionError, setActionError] = useState<string | null>(null);
     const [viewedDrink, setViewedDrink] = useState<DrinkDetail | null>(null);
 
-    // Create / Edit / Duplicate state
     const [isCreateDrinkOpen, setIsCreateDrinkOpen] = useState(false);
     const [createModalMode, setCreateModalMode] = useState<'create' | 'edit' | 'duplicate'>('create');
     const [initialDrinkForForm, setInitialDrinkForForm] = useState<DrinkDetail | null>(null);
@@ -61,7 +60,6 @@ export const CatalogPage: React.FC = () => {
     const hasAdminAccess = isAdmin(user);
     const canManageCatalog = canManageCocktails(user);
 
-    // Debounce search query & spirit filters
     useEffect(() => {
         const timer = setTimeout(() => {
             const effectiveQuery = searchQuery.trim() || selectedSpirit;
@@ -70,7 +68,6 @@ export const CatalogPage: React.FC = () => {
         return () => clearTimeout(timer);
     }, [searchQuery, selectedSpirit]);
 
-    // Check if background sync is actively running
     const { data: syncStatus } = useQuery({
         queryKey: ['cocktaildb-sync-status'],
         queryFn: syncApi.getCocktailDbSyncStatus,
@@ -78,7 +75,6 @@ export const CatalogPage: React.FC = () => {
         enabled: hasAdminAccess,
     });
 
-    // Infinite Query for Drinks
     const {
         data: pagedDrinksData,
         isLoading,
@@ -103,7 +99,6 @@ export const CatalogPage: React.FC = () => {
     const drinks = pagedDrinksData?.pages.flatMap((page) => page.items) ?? [];
     const totalCount = pagedDrinksData?.pages[0]?.totalCount ?? drinks.length;
 
-    // IntersectionObserver for infinite scroll
     useEffect(() => {
         const sentinel = loadMoreRef.current;
         if (!sentinel) return;
@@ -159,16 +154,16 @@ export const CatalogPage: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6">
-            {/* Page Header & Search Controls */}
+        <div className="space-y-5">
+            {/* Open Page Header + Direct Ground Search */}
             <section className="space-y-4">
-                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                     <div>
-                        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
-                            Cocktail Catalog
+                        <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-wide leading-none">
+                            COCKTAIL MENU
                         </h1>
-                        <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-                            Browse recipes, inspect ABV ratios, and customize pours directly to your BAC tracker.
+                        <p className="text-xs sm:text-sm text-zinc-400 mt-1.5">
+                            Tap any cocktail for the full recipe or pour directly to track BAC.
                         </p>
                     </div>
 
@@ -178,7 +173,7 @@ export const CatalogPage: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => setIsSyncModalOpen(true)}
-                                    className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border dose-press ${
+                                    className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border dose-press ${
                                         syncStatus?.isRunning
                                             ? 'bg-red-600/20 border-red-500/60 text-red-200'
                                             : 'bg-[#111114] hover:bg-[#18181d] border-white/[0.08] text-zinc-200'
@@ -190,7 +185,7 @@ export const CatalogPage: React.FC = () => {
                                         }`}
                                         aria-hidden="true"
                                     />
-                                    <span>{syncStatus?.isRunning ? 'Syncing…' : 'Sync TheCocktailDB'}</span>
+                                    <span>{syncStatus?.isRunning ? 'Syncing…' : 'Sync DB'}</span>
                                 </button>
                             )}
 
@@ -199,18 +194,18 @@ export const CatalogPage: React.FC = () => {
                                     <button
                                         type="button"
                                         onClick={handleOpenCreateNew}
-                                        className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-100 font-bold text-xs flex items-center gap-1.5 dose-press"
+                                        className="min-h-[38px] px-3 py-1.5 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-100 font-bold text-xs flex items-center gap-1.5 dose-press"
                                     >
-                                        <Plus className="w-4 h-4 text-red-400" aria-hidden="true" />
+                                        <Plus className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
                                         <span>New Drink</span>
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setIsCreateIngredientOpen(true)}
-                                        className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-100 font-bold text-xs flex items-center gap-1.5 dose-press"
+                                        className="min-h-[38px] px-3 py-1.5 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-100 font-bold text-xs flex items-center gap-1.5 dose-press"
                                     >
-                                        <Wine className="w-4 h-4 text-red-400" aria-hidden="true" />
-                                        <span>New Ingredient</span>
+                                        <Wine className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
+                                        <span>New Bottle</span>
                                     </button>
                                 </>
                             )}
@@ -218,43 +213,48 @@ export const CatalogPage: React.FC = () => {
                     )}
                 </div>
 
-                {/* Search + Spirit Filter Strip */}
-                <div className="p-4 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-3">
-                    <GlobalSearch
-                        value={searchQuery}
-                        onChange={(v) => {
-                            setSearchQuery(v);
-                            if (v) setSelectedSpirit('');
-                        }}
-                    />
+                {/* Unboxed Direct Search */}
+                <GlobalSearch
+                    value={searchQuery}
+                    onChange={(v) => {
+                        setSearchQuery(v);
+                        if (v) setSelectedSpirit('');
+                    }}
+                />
 
-                    <div
-                        className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5"
-                        role="group"
-                        aria-label="Filter by base spirit"
-                    >
-                        {BASE_SPIRITS.map((tab) => {
-                            const isSelected = selectedSpirit === tab.query && !searchQuery;
-                            return (
-                                <button
-                                    key={tab.label}
-                                    type="button"
-                                    aria-pressed={isSelected}
-                                    onClick={() => {
-                                        setSearchQuery('');
-                                        setSelectedSpirit(tab.query);
-                                    }}
-                                    className={`min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 border dose-press ${
-                                        isSelected
-                                            ? 'bg-red-600 text-white border-red-500/60'
-                                            : 'bg-[#0c0c0f] text-zinc-400 hover:text-zinc-100 border-white/[0.08]'
-                                    }`}
-                                >
-                                    {tab.label}
-                                </button>
-                            );
-                        })}
-                    </div>
+                {/* Horizontal Underline Spirit Filter Track */}
+                <div
+                    className="-mx-4 px-4 sm:mx-0 sm:px-0 border-b border-white/[0.08] flex items-center gap-5 overflow-x-auto no-scrollbar"
+                    role="group"
+                    aria-label="Filter by base spirit"
+                >
+                    {BASE_SPIRITS.map((tab) => {
+                        const isSelected = selectedSpirit === tab.query && !searchQuery;
+                        return (
+                            <button
+                                key={tab.label}
+                                type="button"
+                                aria-pressed={isSelected}
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    setSelectedSpirit(tab.query);
+                                }}
+                                className={`relative min-h-[42px] py-2.5 text-xs font-bold shrink-0 whitespace-nowrap transition-colors ${
+                                    isSelected
+                                        ? 'text-white'
+                                        : 'text-zinc-400 hover:text-zinc-200'
+                                }`}
+                            >
+                                <span>{tab.label}</span>
+                                {isSelected && (
+                                    <span
+                                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-500 rounded-full"
+                                        aria-hidden="true"
+                                    />
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
             </section>
 
@@ -279,21 +279,17 @@ export const CatalogPage: React.FC = () => {
 
             {/* Skeleton Loading Grid */}
             {isLoading && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5" aria-busy="true" aria-label="Loading cocktails">
-                    {Array.from({ length: 8 }).map((_, idx) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" aria-busy="true" aria-label="Loading cocktails">
+                    {Array.from({ length: 6 }).map((_, idx) => (
                         <div
                             key={idx}
                             className="rounded-2xl bg-[#111114] border border-white/[0.08] overflow-hidden"
                         >
-                            <div className="aspect-[4/3] w-full bg-[#0c0c0f]" />
+                            <div className="aspect-[16/10] sm:aspect-[4/3] w-full bg-[#0c0c0f]" />
                             <div className="p-4 space-y-2.5">
-                                <div className="h-5 w-2/3 rounded-lg bg-white/[0.06]" />
+                                <div className="h-6 w-1/2 rounded-lg bg-white/[0.06]" />
                                 <div className="h-3.5 w-full rounded bg-white/[0.04]" />
-                                <div className="h-3.5 w-4/5 rounded bg-white/[0.04]" />
-                                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/[0.06]">
-                                    <div className="h-10 rounded-xl bg-white/[0.05]" />
-                                    <div className="h-10 rounded-xl bg-red-600/20" />
-                                </div>
+                                <div className="h-10 w-full rounded-xl bg-white/[0.05] mt-2" />
                             </div>
                         </div>
                     ))}
@@ -321,9 +317,9 @@ export const CatalogPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Cocktail Grid */}
+            {/* Menu Grid */}
             {!isLoading && !isError && drinks.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                     {drinks.map((drink) => (
                         <DrinkCard
                             key={drink.id}
@@ -364,7 +360,6 @@ export const CatalogPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Infinite Scroll Sentinel */}
             <div ref={loadMoreRef} className="h-4 w-full pointer-events-none" aria-hidden="true" />
 
             {isFetchingNextPage && (
@@ -377,12 +372,11 @@ export const CatalogPage: React.FC = () => {
             {!isLoading && !isError && !hasNextPage && drinks.length > 0 && (
                 <div className="py-8 text-center text-xs text-zinc-400 flex items-center justify-center gap-3 tabular-nums">
                     <div className="h-px bg-white/[0.08] w-14 sm:w-28" aria-hidden="true" />
-                    <span>End of catalog ({totalCount} cocktails)</span>
+                    <span>End of menu ({totalCount} cocktails)</span>
                     <div className="h-px bg-white/[0.08] w-14 sm:w-28" aria-hidden="true" />
                 </div>
             )}
 
-            {/* Modals */}
             <DrinkDetailModal
                 drink={viewedDrink}
                 isOpen={!!viewedDrink}

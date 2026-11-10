@@ -9,6 +9,7 @@ interface BacGaugeCardProps {
     safetyMessage: string;
     estimatedSoberAt?: string;
     totalAlcoholGramsLast12h: number;
+    embedded?: boolean;
 }
 
 interface SafetyConfig {
@@ -34,7 +35,6 @@ const NUMERIC_MAP: Record<string, BacSafetyLevel> = {
     '4': 'Critical',
 };
 
-// Calibrated scale ticks along the semicircular arc (0.00 to 2.00 g/L)
 const GAUGE_TICKS = [0, 0.5, 1.0, 1.5, 2.0];
 
 export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
@@ -44,6 +44,7 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
     safetyMessage,
     estimatedSoberAt,
     totalAlcoholGramsLast12h,
+    embedded = false,
 }) => {
     const resolvedKey: BacSafetyLevel =
         NUMERIC_MAP[String(safetyLevel)] ||
@@ -63,8 +64,13 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
     };
 
     return (
-        <div className="w-full rounded-2xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6 flex flex-col items-center">
-            {/* Instrument Semicircular Gauge */}
+        <div
+            className={
+                embedded
+                    ? 'w-full p-5 sm:p-6 flex flex-col items-center justify-between h-full'
+                    : 'w-full rounded-2xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6 flex flex-col items-center'
+            }
+        >
             <div className="relative w-60 h-36 flex items-end justify-center overflow-hidden">
                 <svg
                     viewBox="0 0 220 124"
@@ -72,7 +78,6 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
                     role="img"
                     aria-label={`Blood alcohol level ${bacGramsPerLiter.toFixed(2)} grams per liter`}
                 >
-                    {/* Calibrated outer instrument ticks */}
                     {GAUGE_TICKS.map((tickVal) => {
                         const frac = tickVal / maxScale;
                         const angleRad = Math.PI * (1 - frac);
@@ -95,7 +100,6 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
                         );
                     })}
 
-                    {/* Base track */}
                     <path
                         d="M 32 108 A 78 78 0 0 1 188 108"
                         fill="none"
@@ -103,7 +107,6 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
                         strokeWidth="15"
                         strokeLinecap="round"
                     />
-                    {/* Active BAC arc */}
                     <path
                         d="M 32 108 A 78 78 0 0 1 188 108"
                         fill="none"
@@ -117,7 +120,7 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
                 </svg>
 
                 <div className="absolute bottom-1 flex flex-col items-center">
-                    <span className="text-3xl font-extrabold tracking-tight text-white tabular-nums">
+                    <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white tabular-nums">
                         {bacGramsPerLiter.toFixed(2)}
                         <span className="text-sm font-semibold text-zinc-400 ml-1">g/L</span>
                     </span>
@@ -127,7 +130,6 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
                 </div>
             </div>
 
-            {/* Safety Status Pill */}
             <div
                 className={`mt-3 inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-bold ${config.text} bg-[#0c0c0f] border ${config.badgeBorder}`}
             >
@@ -139,11 +141,10 @@ export const BacGaugeCard: React.FC<BacGaugeCardProps> = ({
                 <span>{config.label}</span>
             </div>
 
-            <p className="mt-3 text-center text-xs text-zinc-300 leading-relaxed max-w-md">
+            <p className="mt-3 text-center text-xs text-zinc-300 leading-relaxed max-w-sm">
                 {safetyMessage}
             </p>
 
-            {/* Footer Metrics */}
             <div className="mt-5 pt-3.5 border-t border-white/[0.08] w-full flex items-center justify-between text-xs text-zinc-400 tabular-nums">
                 <div className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />

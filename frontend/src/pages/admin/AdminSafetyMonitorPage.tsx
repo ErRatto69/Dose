@@ -67,8 +67,8 @@ export const AdminSafetyMonitorPage: React.FC = () => {
         <div className="space-y-5">
             <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
-                        Party Safety Monitor
+                    <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-wide leading-none">
+                        PARTY SAFETY MONITOR
                     </h1>
                     <p className="text-xs sm:text-sm text-zinc-400 mt-1">
                         Live blood alcohol levels and sobriety estimates across all active guests.

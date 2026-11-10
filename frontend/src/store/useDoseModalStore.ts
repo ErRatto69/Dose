@@ -22,6 +22,7 @@ interface DoseModalState {
     isOpen: boolean;
     drink: DrinkDetail | null;
     components: EditableIngredientDose[];
+    selectedMultiplier: number | null;
     isNow: boolean;
     customConsumedAt: string;
     notes: string;
@@ -45,6 +46,7 @@ export const useDoseModalStore = create<DoseModalState>((set) => ({
     isOpen: false,
     drink: null,
     components: [],
+    selectedMultiplier: 1,
     isNow: true,
     customConsumedAt: getLocalDateTimeInputValue(),
     notes: '',
@@ -64,16 +66,18 @@ export const useDoseModalStore = create<DoseModalState>((set) => ({
                 amountCl: ing.amountCl,
                 isCustomAdded: false,
             })),
+            selectedMultiplier: 1,
             isNow: true,
             customConsumedAt: getLocalDateTimeInputValue(),
             notes: '',
         });
     },
 
-    closeModal: () => set({ isOpen: false, drink: null, components: [] }),
+    closeModal: () => set({ isOpen: false, drink: null, components: [], selectedMultiplier: 1 }),
 
     updateComponentDose: (rowId: string, deltaCl: number) => {
         set((state) => ({
+            selectedMultiplier: null,
             components: state.components.map((c) => {
                 if (c.rowId !== rowId) return c;
                 const newDose = Math.max(0, Math.round((c.amountCl + deltaCl) * 10) / 10);
@@ -84,6 +88,7 @@ export const useDoseModalStore = create<DoseModalState>((set) => ({
 
     setComponentExactDose: (rowId: string, amountCl: number) => {
         set((state) => ({
+            selectedMultiplier: null,
             components: state.components.map((c) =>
                 c.rowId === rowId ? { ...c, amountCl: Math.max(0, Math.round(amountCl * 10) / 10) } : c
             ),
@@ -114,6 +119,7 @@ export const useDoseModalStore = create<DoseModalState>((set) => ({
             const stepCl = defaultCl ?? (isAlcoholicCategory(ing.category) ? 3.0 : 5.0);
             if (existing) {
                 return {
+                    selectedMultiplier: null,
                     components: state.components.map((c) =>
                         c.rowId === existing.rowId
                             ? { ...c, amountCl: Math.round((c.amountCl + stepCl) * 10) / 10 }
@@ -122,6 +128,7 @@ export const useDoseModalStore = create<DoseModalState>((set) => ({
                 };
             }
             return {
+                selectedMultiplier: null,
                 components: [
                     ...state.components,
                     {
@@ -142,6 +149,7 @@ export const useDoseModalStore = create<DoseModalState>((set) => ({
 
     removeComponent: (rowId: string) => {
         set((state) => ({
+            selectedMultiplier: null,
             components: state.components.filter((c) => c.rowId !== rowId),
         }));
     },
@@ -151,6 +159,7 @@ export const useDoseModalStore = create<DoseModalState>((set) => ({
             if (!state.drink) return state;
             const origMap = new Map(state.drink.ingredients.map((i) => [i.ingredientId, i.amountCl]));
             return {
+                selectedMultiplier: multiplier,
                 components: state.components.map((comp) => {
                     const baseAmount = origMap.get(comp.ingredientId) ?? comp.amountCl;
                     return {

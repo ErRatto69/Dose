@@ -45,8 +45,8 @@ export const AdminReviewsPage: React.FC = () => {
         <>
             <div className="space-y-6">
                 <section>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
-                        Reviews Moderation
+                    <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-wide leading-none">
+                        REVIEWS MODERATION
                     </h1>
                     <p className="text-xs sm:text-sm text-zinc-400 mt-1">
                         Search and moderate community tasting notes across the cocktail catalog.

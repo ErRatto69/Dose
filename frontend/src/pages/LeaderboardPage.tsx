@@ -55,18 +55,9 @@ export const LeaderboardPage: React.FC = () => {
     if (isLoading) {
         return (
             <div className="space-y-6" aria-busy="true" aria-label="Loading monthly leaderboard">
-                <div className="h-16 w-64 rounded-2xl bg-[#111114] border border-white/[0.08]" />
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    <div className="lg:col-span-8 space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                            {Array.from({ length: 3 }).map((_, i) => (
-                                <div key={i} className="h-44 rounded-2xl bg-[#111114] border border-white/[0.08]" />
-                            ))}
-                        </div>
-                        <div className="h-64 rounded-2xl bg-[#111114] border border-white/[0.08]" />
-                    </div>
-                    <div className="lg:col-span-4 h-80 rounded-2xl bg-[#111114] border border-white/[0.08]" />
-                </div>
+                <div className="h-14 w-64 rounded-xl bg-[#111114] border border-white/[0.08]" />
+                <div className="h-56 rounded-2xl bg-[#111114] border border-white/[0.08]" />
+                <div className="h-64 rounded-2xl bg-[#111114] border border-white/[0.08]" />
             </div>
         );
     }
@@ -92,130 +83,158 @@ export const LeaderboardPage: React.FC = () => {
         return unit === 'cl' ? `${cl.toFixed(1)} cl` : `${grams.toFixed(1)} g`;
     };
 
-    const topThree = leaderboard.entries.slice(0, 3);
+    const first = leaderboard.entries[0];
+    const runnersUp = leaderboard.entries.slice(1, 3);
     const restOfLeaderboard = leaderboard.entries.slice(3);
 
     return (
         <div className="space-y-6">
-            {/* Page Header */}
-            <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            {/* Header */}
+            <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
-                        {leaderboard.period} Standings
+                    <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-wide leading-none">
+                        {leaderboard.period.toUpperCase()} STANDINGS
                     </h1>
-                    <p className="text-xs sm:text-sm text-zinc-400 mt-1 flex items-center gap-1.5 tabular-nums">
+                    <p className="text-xs sm:text-sm text-zinc-400 mt-1.5 flex items-center gap-1.5 tabular-nums">
                         <Calendar className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
                         <span>Resets on {new Date(leaderboard.resetsAt).toLocaleDateString()}</span>
                     </p>
                 </div>
 
-                <div className="inline-flex items-center gap-2 self-start sm:self-auto px-3.5 py-2 rounded-xl bg-[#111114] border border-white/[0.08] text-xs font-bold text-zinc-200 tabular-nums">
-                    <Trophy className="w-4 h-4 text-red-400" aria-hidden="true" />
-                    <span>{leaderboard.entries.length} active ranked guests</span>
+                <div className="inline-flex items-center gap-2 self-start sm:self-auto px-3.5 py-1.5 rounded-full bg-[#111114] border border-white/[0.08] text-xs font-bold text-zinc-200 tabular-nums">
+                    <Trophy className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
+                    <span>{leaderboard.entries.length} ranked</span>
                 </div>
             </section>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Left Column: Podium & Standings Table */}
                 <div className="lg:col-span-8 space-y-6">
-                    {topThree.length > 0 && (
+                    {/* Stepped Podium Board */}
+                    {first && (
                         <section className="space-y-3">
-                            <h2 className="text-sm font-extrabold text-zinc-200 flex items-center gap-1.5">
+                            <h2 className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
                                 <Medal className="w-4 h-4 text-red-400" aria-hidden="true" />
                                 <span>Podium Leaders</span>
                             </h2>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                                {topThree.map((entry) => {
-                                    const IconComponent = TIER_ICONS[entry.currentTier.badgeIcon] || Award;
-                                    const isFirst = entry.rank === 1;
 
+                            <div className="rounded-2xl bg-[#111114] border border-white/[0.08] overflow-hidden">
+                                {/* #1 Leader Featured Row */}
+                                {(() => {
+                                    const Icon1 = TIER_ICONS[first.currentTier.badgeIcon] || Crown;
                                     return (
-                                        <div
-                                            key={entry.userId}
-                                            className={`p-5 rounded-2xl border flex flex-col justify-between gap-4 ${
-                                                isFirst
-                                                    ? 'bg-[#15151a] border-red-500/55 order-first sm:order-none'
-                                                    : 'bg-[#111114] border-white/[0.08]'
-                                            }`}
-                                        >
-                                            <div className="flex items-center justify-between">
-                                                <span
-                                                    className={`px-2.5 py-1 rounded-lg text-xs font-extrabold tabular-nums ${
-                                                        entry.rank === 1
-                                                            ? 'bg-red-600 text-white'
-                                                            : entry.rank === 2
-                                                                ? 'bg-zinc-200 text-zinc-950'
-                                                                : 'bg-amber-600 text-white'
-                                                    }`}
-                                                >
-                                                    #{entry.rank}
-                                                </span>
-                                                <span className="text-xs text-zinc-400 font-semibold tabular-nums">
-                                                    {entry.drinksCount} drinks
-                                                </span>
-                                            </div>
+                                        <div className="p-5 bg-gradient-to-br from-red-950/35 via-[#141419] to-[#111114] border-b border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                            <div className="space-y-2 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-xs font-extrabold tabular-nums">
+                                                        #1 Leader
+                                                    </span>
+                                                    <span className="text-xs text-zinc-400 tabular-nums">
+                                                        {first.drinksCount} drinks
+                                                    </span>
+                                                </div>
 
-                                            <div>
-                                                <div className="flex flex-wrap items-center gap-1.5">
-                                                    <h3 className="text-lg font-extrabold text-white truncate">
-                                                        {entry.username}
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <h3 className="font-display text-3xl font-extrabold tracking-wide text-white truncate">
+                                                        {first.username}
                                                     </h3>
-                                                    {entry.monthlyBadges &&
-                                                        entry.monthlyBadges.map((badge) => (
-                                                            <MonthlyBadgeChip
-                                                                key={badge.key}
-                                                                badge={badge}
-                                                            />
-                                                        ))}
+                                                    {first.monthlyBadges?.map((badge) => (
+                                                        <MonthlyBadgeChip key={badge.key} badge={badge} />
+                                                    ))}
                                                 </div>
+
                                                 <div
-                                                    className="flex items-center gap-1.5 text-xs font-bold mt-1.5"
-                                                    style={{ color: entry.currentTier.colorHex }}
+                                                    className="inline-flex items-center gap-1.5 text-xs font-bold"
+                                                    style={{ color: first.currentTier.colorHex }}
                                                 >
-                                                    <IconComponent className="w-4 h-4" aria-hidden="true" />
-                                                    <span>{entry.currentTier.name}</span>
+                                                    <Icon1 className="w-4 h-4" aria-hidden="true" />
+                                                    <span>{first.currentTier.name}</span>
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-2.5 pt-3 border-t border-white/[0.08]">
-                                                <div className="flex items-baseline justify-between">
-                                                    <span className="text-xs text-zinc-400">Pure Ethanol</span>
-                                                    <strong className="text-xl font-extrabold text-red-400 tabular-nums">
-                                                        {formatAlcoholTotal(
-                                                            entry.monthlyPureAlcoholGrams,
-                                                            entry.monthlyPureAlcoholCl
-                                                        )}
-                                                    </strong>
-                                                </div>
-
-                                                {entry.gramsToNextTier > 0 && (
-                                                    <div>
-                                                        <div className="flex justify-between text-[11px] text-zinc-400 mb-1 tabular-nums">
-                                                            <span>Next tier</span>
-                                                            <span className="text-red-400 font-bold">
-                                                                {entry.nextTierProgressPercent}%
-                                                            </span>
-                                                        </div>
-                                                        <div className="w-full h-1.5 bg-[#0c0c0f] rounded-full overflow-hidden">
-                                                            <div
-                                                                className="h-full bg-red-600 rounded-full"
-                                                                style={{ width: `${entry.nextTierProgressPercent}%` }}
-                                                            />
-                                                        </div>
-                                                    </div>
+                                            <div className="sm:text-right shrink-0 space-y-1">
+                                                <span className="text-[11px] text-zinc-400 block">Pure Ethanol</span>
+                                                <strong className="text-2xl sm:text-3xl font-extrabold text-red-400 tabular-nums block leading-none">
+                                                    {formatAlcoholTotal(
+                                                        first.monthlyPureAlcoholGrams,
+                                                        first.monthlyPureAlcoholCl
+                                                    )}
+                                                </strong>
+                                                {first.gramsToNextTier > 0 && (
+                                                    <span className="text-[11px] text-zinc-400 tabular-nums block pt-1">
+                                                        Next tier: {first.nextTierProgressPercent}%
+                                                    </span>
                                                 )}
                                             </div>
                                         </div>
                                     );
-                                })}
+                                })()}
+
+                                {/* #2 and #3 Side-by-Side Split on Mobile & Desktop */}
+                                {runnersUp.length > 0 && (
+                                    <div className="grid grid-cols-2 divide-x divide-white/[0.08]">
+                                        {runnersUp.map((entry) => {
+                                            const IconComp = TIER_ICONS[entry.currentTier.badgeIcon] || Award;
+                                            return (
+                                                <div key={entry.userId} className="p-4 flex flex-col justify-between gap-3">
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex items-center justify-between gap-1">
+                                                            <span
+                                                                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold tabular-nums ${
+                                                                    entry.rank === 2
+                                                                        ? 'bg-zinc-200 text-zinc-950'
+                                                                        : 'bg-amber-600 text-white'
+                                                                }`}
+                                                            >
+                                                                #{entry.rank}
+                                                            </span>
+                                                            <span className="text-[11px] text-zinc-400 tabular-nums">
+                                                                {entry.drinksCount}d
+                                                            </span>
+                                                        </div>
+
+                                                        <h3 className="font-display text-xl font-bold tracking-wide text-white truncate">
+                                                            {entry.username}
+                                                        </h3>
+
+                                                        <div
+                                                            className="flex items-center gap-1 text-[11px] font-bold"
+                                                            style={{ color: entry.currentTier.colorHex }}
+                                                        >
+                                                            <IconComp className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                                                            <span className="truncate">{entry.currentTier.name}</span>
+                                                        </div>
+
+                                                        {entry.monthlyBadges && entry.monthlyBadges.length > 0 && (
+                                                            <div className="flex flex-wrap gap-1 pt-1">
+                                                                {entry.monthlyBadges.map((badge) => (
+                                                                    <MonthlyBadgeChip key={badge.key} badge={badge} />
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="pt-2.5 border-t border-white/[0.06] flex items-baseline justify-between gap-1">
+                                                        <span className="text-[11px] text-zinc-400">Ethanol</span>
+                                                        <strong className="text-sm font-extrabold text-red-400 tabular-nums">
+                                                            {formatAlcoholTotal(
+                                                                entry.monthlyPureAlcoholGrams,
+                                                                entry.monthlyPureAlcoholCl
+                                                            )}
+                                                        </strong>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         </section>
                     )}
 
-                    {/* Clean Dense Standings Table List for Ranks 4+ */}
+                    {/* Scoreboard Ledger for Ranks 4+ */}
                     {restOfLeaderboard.length > 0 && (
                         <section className="space-y-2.5">
-                            <h2 className="text-sm font-extrabold text-zinc-200">
+                            <h2 className="text-xs font-bold text-zinc-300">
                                 Remaining Standings (Ranks 4–15)
                             </h2>
                             <div className="rounded-2xl bg-[#111114] border border-white/[0.08] divide-y divide-white/[0.06] overflow-hidden">
@@ -224,24 +243,20 @@ export const LeaderboardPage: React.FC = () => {
                                     return (
                                         <div
                                             key={entry.userId}
-                                            className="px-4 py-3.5 flex items-center justify-between gap-3 text-xs hover:bg-white/[0.02] transition-colors"
+                                            className="px-4 py-3 flex items-center justify-between gap-3 text-xs"
                                         >
                                             <div className="flex items-center gap-3 min-w-0">
-                                                <div className="w-8 h-8 rounded-lg bg-[#0c0c0f] border border-white/[0.08] flex items-center justify-center font-extrabold text-zinc-300 tabular-nums shrink-0">
+                                                <span className="w-6 text-center font-extrabold text-zinc-400 tabular-nums shrink-0">
                                                     {entry.rank}
-                                                </div>
+                                                </span>
                                                 <div className="min-w-0">
                                                     <div className="flex flex-wrap items-center gap-1.5">
                                                         <strong className="text-sm font-bold text-white truncate">
                                                             {entry.username}
                                                         </strong>
-                                                        {entry.monthlyBadges &&
-                                                            entry.monthlyBadges.map((badge) => (
-                                                                <MonthlyBadgeChip
-                                                                    key={badge.key}
-                                                                    badge={badge}
-                                                                />
-                                                            ))}
+                                                        {entry.monthlyBadges?.map((badge) => (
+                                                            <MonthlyBadgeChip key={badge.key} badge={badge} />
+                                                        ))}
                                                     </div>
                                                     <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 mt-0.5 tabular-nums">
                                                         <span
@@ -257,15 +272,12 @@ export const LeaderboardPage: React.FC = () => {
                                                 </div>
                                             </div>
 
-                                            <div className="text-right shrink-0">
-                                                <strong className="text-sm font-extrabold text-red-400 tabular-nums block">
-                                                    {formatAlcoholTotal(
-                                                        entry.monthlyPureAlcoholGrams,
-                                                        entry.monthlyPureAlcoholCl
-                                                    )}
-                                                </strong>
-                                                <span className="text-[11px] text-zinc-400">ethanol</span>
-                                            </div>
+                                            <strong className="text-sm font-extrabold text-red-400 tabular-nums shrink-0">
+                                                {formatAlcoholTotal(
+                                                    entry.monthlyPureAlcoholGrams,
+                                                    entry.monthlyPureAlcoholCl
+                                                )}
+                                            </strong>
                                         </div>
                                     );
                                 })}
@@ -275,42 +287,36 @@ export const LeaderboardPage: React.FC = () => {
 
                     {leaderboard.entries.length === 0 && (
                         <div className="p-12 rounded-2xl bg-[#111114] border border-white/[0.08] text-center text-xs text-zinc-400">
-                            No drinks logged yet this month. Pour the first cocktail to open the standings.
+                            No drinks logged yet this month. Pour the first cocktail to open the board.
                         </div>
                     )}
                 </div>
 
-                {/* Right Column: Ranking Tiers & Rolling Monthly Badges */}
+                {/* Right Column: Tiers & Rolling Monthly Badges */}
                 <div className="lg:col-span-4 space-y-5">
-                    <section className="p-5 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-3.5">
-                        <div>
-                            <h2 className="text-base font-extrabold text-white">Ranking Tiers</h2>
-                            <p className="text-xs text-zinc-400 mt-0.5">
-                                Monthly thresholds unlocked by cumulative pure ethanol.
+                    <section className="rounded-2xl bg-[#111114] border border-white/[0.08] overflow-hidden">
+                        <div className="px-4 py-3.5 border-b border-white/[0.08] bg-[#0c0c0f]">
+                            <h2 className="text-sm font-extrabold text-white">Ranking Tiers</h2>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">
+                                Monthly thresholds by cumulative ethanol.
                             </p>
                         </div>
 
-                        <div className="divide-y divide-white/[0.06] rounded-xl bg-[#0c0c0f] border border-white/[0.08] overflow-hidden">
+                        <div className="divide-y divide-white/[0.06]">
                             {LEAGUE_TIERS_REFERENCE.map((tier) => {
                                 const Icon = TIER_ICONS[tier.icon] || Award;
                                 return (
                                     <div
                                         key={tier.name}
-                                        className="px-3.5 py-2.5 flex items-center justify-between gap-2"
+                                        className="px-4 py-3 flex items-center justify-between gap-2"
                                     >
                                         <div className="flex items-center gap-2.5 min-w-0">
-                                            <div
-                                                className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#111114] border border-white/[0.08] shrink-0"
-                                                style={{ color: tier.color }}
-                                            >
+                                            <span style={{ color: tier.color }}>
                                                 <Icon className="w-4 h-4" aria-hidden="true" />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="text-xs font-bold truncate" style={{ color: tier.color }}>
-                                                    {tier.name}
-                                                </div>
-                                                <div className="text-[11px] text-zinc-400">Min. required</div>
-                                            </div>
+                                            </span>
+                                            <span className="text-xs font-bold truncate" style={{ color: tier.color }}>
+                                                {tier.name}
+                                            </span>
                                         </div>
                                         <span className="text-xs tabular-nums font-bold text-zinc-200 shrink-0">
                                             {unit === 'cl' ? `${tier.minCl} cl` : `${tier.minGrams} g`}
@@ -322,24 +328,24 @@ export const LeaderboardPage: React.FC = () => {
                     </section>
 
                     {myMonthlyBadges && (
-                        <section className="p-5 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-4">
-                            <div className="flex items-start justify-between gap-2">
+                        <section className="rounded-2xl bg-[#111114] border border-white/[0.08] overflow-hidden">
+                            <div className="px-4 py-3.5 border-b border-white/[0.08] bg-[#0c0c0f] flex items-center justify-between gap-2">
                                 <div>
-                                    <h2 className="text-base font-extrabold text-white flex items-center gap-1.5">
+                                    <h2 className="text-sm font-extrabold text-white flex items-center gap-1.5">
                                         <Sparkles className="w-4 h-4 text-red-400" aria-hidden="true" />
-                                        <span>Your Monthly Badges</span>
+                                        <span>Monthly Badges</span>
                                     </h2>
-                                    <p className="text-xs text-zinc-400 mt-0.5">
-                                        Rolling {myMonthlyBadges.period} UTC badges. Resets monthly.
+                                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                                        Rolling {myMonthlyBadges.period} UTC badges.
                                     </p>
                                 </div>
-                                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#0c0c0f] border border-white/[0.08] text-zinc-200 tabular-nums shrink-0">
+                                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#111114] border border-white/[0.08] text-zinc-200 tabular-nums shrink-0">
                                     {myMonthlyBadges.badges.filter((b) => b.isEarned).length}/
                                     {myMonthlyBadges.badges.length}
                                 </span>
                             </div>
 
-                            <div className="space-y-2.5">
+                            <div className="divide-y divide-white/[0.06]">
                                 {myMonthlyBadges.badges.map((badge) => {
                                     const pct =
                                         badge.targetProgress > 0
@@ -352,14 +358,7 @@ export const LeaderboardPage: React.FC = () => {
                                             : 0;
 
                                     return (
-                                        <div
-                                            key={badge.key}
-                                            className={`p-3 rounded-xl border space-y-2 ${
-                                                badge.isEarned
-                                                    ? 'bg-[#0c0c0f] border-white/15'
-                                                    : 'bg-[#0c0c0f]/70 border-white/[0.06]'
-                                            }`}
-                                        >
+                                        <div key={badge.key} className="p-3.5 space-y-2">
                                             <div className="flex items-center justify-between gap-2">
                                                 <MonthlyBadgeChip badge={badge} />
                                                 {badge.isEarned ? (
@@ -377,7 +376,7 @@ export const LeaderboardPage: React.FC = () => {
                                                 {badge.description}
                                             </p>
                                             {!badge.isEarned && (
-                                                <div className="w-full h-1.5 bg-[#111114] rounded-full overflow-hidden">
+                                                <div className="w-full h-1.5 bg-[#0c0c0f] rounded-full overflow-hidden">
                                                     <div
                                                         className="h-full bg-red-600 rounded-full transition-[width] duration-300"
                                                         style={{ width: `${pct}%` }}

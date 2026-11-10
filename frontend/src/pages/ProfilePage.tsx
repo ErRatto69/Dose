@@ -120,72 +120,74 @@ export const ProfilePage: React.FC = () => {
     return (
         <>
             <div className="space-y-6">
+                {/* Flush Identity Strip */}
+                <section className="flex items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-12 h-12 rounded-2xl bg-[#111114] border border-red-600/45 flex items-center justify-center font-display text-2xl font-extrabold text-red-400 shrink-0">
+                            {userInitial}
+                        </div>
+                        <div className="min-w-0">
+                            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-wide leading-none flex flex-wrap items-center gap-2">
+                                <span className="truncate">{activeProfile?.username}</span>
+                                <span className="font-sans text-[11px] px-2 py-0.5 rounded-full bg-red-600/15 border border-red-500/35 text-red-300 font-semibold">
+                                    {activeProfile?.role}
+                                </span>
+                            </h1>
+                            <p className="text-xs text-zinc-400 mt-1 truncate">{activeProfile?.email}</p>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setIsLogoutModalOpen(true)}
+                        className="min-h-[40px] px-3.5 py-2 rounded-full bg-[#111114] hover:bg-red-950/50 border border-white/[0.08] hover:border-red-500/45 text-zinc-300 hover:text-red-300 text-xs font-bold flex items-center gap-1.5 shrink-0 dose-press"
+                    >
+                        <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Sign Out</span>
+                    </button>
+                </section>
+
+                {/* Mobile Host Admin Shortcuts */}
+                {hasAdminAccess && (
+                    <section className="md:hidden rounded-2xl bg-[#111114] border border-white/[0.08] divide-y divide-white/[0.06] overflow-hidden">
+                        <div className="px-4 py-2.5 bg-[#0c0c0f] text-xs font-extrabold text-zinc-300">
+                            Host Administration
+                        </div>
+                        <Link
+                            to="/admin/safety"
+                            className="min-h-[48px] px-4 py-3 flex items-center justify-between text-xs font-bold text-zinc-200 hover:bg-white/[0.03]"
+                        >
+                            <span className="flex items-center gap-2.5">
+                                <ShieldCheck className="w-4 h-4 text-red-400" aria-hidden="true" />
+                                <span>Party Safety Monitor</span>
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-zinc-400" aria-hidden="true" />
+                        </Link>
+                        <Link
+                            to="/admin/users"
+                            className="min-h-[48px] px-4 py-3 flex items-center justify-between text-xs font-bold text-zinc-200 hover:bg-white/[0.03]"
+                        >
+                            <span className="flex items-center gap-2.5">
+                                <Users className="w-4 h-4 text-red-400" aria-hidden="true" />
+                                <span>Users &amp; Access Requests</span>
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-zinc-400" aria-hidden="true" />
+                        </Link>
+                        <Link
+                            to="/admin/reviews"
+                            className="min-h-[48px] px-4 py-3 flex items-center justify-between text-xs font-bold text-zinc-200 hover:bg-white/[0.03]"
+                        >
+                            <span className="flex items-center gap-2.5">
+                                <MessageSquare className="w-4 h-4 text-red-400" aria-hidden="true" />
+                                <span>Reviews Moderation</span>
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-zinc-400" aria-hidden="true" />
+                        </Link>
+                    </section>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                    <div className="lg:col-span-7 space-y-6">
-                        <section className="p-5 rounded-2xl bg-[#111114] border border-white/[0.08] flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-3.5 min-w-0">
-                                <div className="w-12 h-12 rounded-2xl bg-[#0c0c0f] border border-red-600/45 flex items-center justify-center text-lg font-extrabold text-red-400 shrink-0">
-                                    {userInitial}
-                                </div>
-                                <div className="min-w-0">
-                                    <h1 className="text-lg font-extrabold text-white leading-tight flex flex-wrap items-center gap-2">
-                                        <span className="truncate">{activeProfile?.username}</span>
-                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-600/15 border border-red-500/35 text-red-300 font-semibold">
-                                            {activeProfile?.role}
-                                        </span>
-                                    </h1>
-                                    <p className="text-xs text-zinc-400 mt-0.5 truncate">{activeProfile?.email}</p>
-                                </div>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => setIsLogoutModalOpen(true)}
-                                className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#0c0c0f] hover:bg-red-950/50 border border-white/[0.08] hover:border-red-500/45 text-zinc-300 hover:text-red-300 text-xs font-bold flex items-center gap-1.5 shrink-0 dose-press"
-                            >
-                                <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
-                                <span>Sign Out</span>
-                            </button>
-                        </section>
-
-                        {hasAdminAccess && (
-                            <section className="p-5 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-3">
-                                <h2 className="text-sm font-extrabold text-white">Host Administration</h2>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                    <Link
-                                        to="/admin/safety"
-                                        className="min-h-[48px] p-3 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] flex items-center justify-between gap-2 text-xs font-bold text-zinc-200 dose-press"
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <ShieldCheck className="w-4 h-4 text-red-400" aria-hidden="true" />
-                                            <span>Party Safety</span>
-                                        </span>
-                                        <ChevronRight className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
-                                    </Link>
-                                    <Link
-                                        to="/admin/users"
-                                        className="min-h-[48px] p-3 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] flex items-center justify-between gap-2 text-xs font-bold text-zinc-200 dose-press"
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <Users className="w-4 h-4 text-red-400" aria-hidden="true" />
-                                            <span>Users</span>
-                                        </span>
-                                        <ChevronRight className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
-                                    </Link>
-                                    <Link
-                                        to="/admin/reviews"
-                                        className="min-h-[48px] p-3 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] flex items-center justify-between gap-2 text-xs font-bold text-zinc-200 dose-press"
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <MessageSquare className="w-4 h-4 text-red-400" aria-hidden="true" />
-                                            <span>Reviews</span>
-                                        </span>
-                                        <ChevronRight className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
-                                    </Link>
-                                </div>
-                            </section>
-                        )}
-
+                    <div className="lg:col-span-7">
                         <form
                             onSubmit={(e) => {
                                 e.preventDefault();
@@ -198,7 +200,7 @@ export const ProfilePage: React.FC = () => {
                                     Biometrics &amp; Units
                                 </h2>
                                 <p className="text-xs text-zinc-400 mt-0.5">
-                                    Used for BAC metabolic calculations and cocktail recipe volume formatting.
+                                    Calibrates your Watson TBW BAC model and recipe pour volumes.
                                 </p>
                             </div>
 
@@ -238,7 +240,7 @@ export const ProfilePage: React.FC = () => {
                                         required
                                         value={weightKg}
                                         onChange={(e) => setDraft((d) => ({ ...d, weightKg: e.target.value }))}
-                                        className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-sm tabular-nums dose-input"
+                                        className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl text-sm tabular-nums dose-input"
                                     />
                                 </div>
                                 <div>
@@ -255,7 +257,7 @@ export const ProfilePage: React.FC = () => {
                                         required
                                         value={heightCm}
                                         onChange={(e) => setDraft((d) => ({ ...d, heightCm: e.target.value }))}
-                                        className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-sm tabular-nums dose-input"
+                                        className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl text-sm tabular-nums dose-input"
                                     />
                                 </div>
                                 <div>
@@ -269,7 +271,7 @@ export const ProfilePage: React.FC = () => {
                                                 type="button"
                                                 aria-pressed={sex === option}
                                                 onClick={() => setDraft((d) => ({ ...d, sex: option }))}
-                                                className={`min-h-[42px] py-2 rounded-xl text-xs font-bold border dose-press ${
+                                                className={`min-h-[44px] py-2 rounded-xl text-xs font-bold border dose-press ${
                                                     sex === option
                                                         ? 'bg-red-600/20 border-red-500 text-red-200'
                                                         : 'bg-[#0c0c0f] border-white/[0.08] text-zinc-400 hover:text-zinc-200'
@@ -292,26 +294,26 @@ export const ProfilePage: React.FC = () => {
                                         max="2010"
                                         value={birthYear}
                                         onChange={(e) => setDraft((d) => ({ ...d, birthYear: e.target.value }))}
-                                        className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-sm tabular-nums dose-input"
+                                        className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl text-sm tabular-nums dose-input"
                                     />
                                 </div>
                             </div>
 
-                            <div className="pt-3 border-t border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="pt-3 border-t border-white/[0.08] flex items-center justify-between gap-3">
                                 <div>
                                     <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
                                         <Sliders className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
                                         <span>Volume Unit</span>
                                     </span>
                                     <span className="text-[11px] text-zinc-400 block mt-0.5">
-                                        Display unit across catalog recipes and custom pours
+                                        Recipes &amp; pour amounts
                                     </span>
                                 </div>
 
                                 <div
                                     role="group"
                                     aria-label="Volume display unit"
-                                    className="inline-flex p-1 bg-[#0c0c0f] border border-white/[0.08] rounded-xl self-start sm:self-auto"
+                                    className="inline-flex p-1 bg-[#0c0c0f] border border-white/[0.08] rounded-xl shrink-0"
                                 >
                                     {(
                                         [
@@ -370,54 +372,54 @@ export const ProfilePage: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Collector's Cocktail Passport */}
                 <CocktailPassportSection />
 
-                <section className="p-5 sm:p-6 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-4">
-                    <div className="flex items-center gap-2">
-                        <MessageSquare className="w-5 h-5 text-red-400" aria-hidden="true" />
-                        <h2 className="text-lg font-extrabold text-white">
+                {/* Personal Tasting Reviews */}
+                <section className="rounded-2xl bg-[#111114] border border-white/[0.08] overflow-hidden">
+                    <div className="px-5 py-4 bg-[#0c0c0f] border-b border-white/[0.08] flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-red-400" aria-hidden="true" />
+                        <h2 className="text-sm font-extrabold text-white">
                             My Tasting Reviews {myReviews ? `(${myReviews.totalCount})` : ''}
                         </h2>
                     </div>
 
                     {myReviews && myReviews.items.length > 0 ? (
-                        <div className="space-y-3">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="p-5 space-y-4">
+                            <div className="divide-y divide-white/[0.06] -my-2">
                                 {myReviews.items.map((rev) => (
                                     <div
                                         key={rev.id}
-                                        className="p-4 rounded-xl bg-[#0c0c0f] border border-white/[0.08] flex flex-col justify-between gap-3 text-xs"
+                                        className="py-3.5 flex items-start justify-between gap-3 text-xs"
                                     >
-                                        <div>
-                                            <div className="flex items-center justify-between gap-2 mb-1">
+                                        <div className="min-w-0 space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 <strong className="text-sm font-bold text-white">
                                                     {rev.drinkName}
                                                 </strong>
-                                                <div className="flex items-center gap-1 text-amber-400 font-bold tabular-nums shrink-0">
-                                                    <Star className="w-3.5 h-3.5 fill-amber-400" aria-hidden="true" />
+                                                <div className="flex items-center gap-1 text-amber-400 font-bold tabular-nums">
+                                                    <Star className="w-3 h-3 fill-amber-400" aria-hidden="true" />
                                                     <span>{rev.rating}/5</span>
                                                 </div>
+                                                <span className="text-[11px] text-zinc-400 tabular-nums">
+                                                    {new Date(rev.createdAt).toLocaleDateString()}
+                                                </span>
                                             </div>
                                             {rev.comment && (
-                                                <p className="text-zinc-300 leading-relaxed mt-1">
+                                                <p className="text-zinc-300 leading-relaxed">
                                                     &ldquo;{rev.comment}&rdquo;
                                                 </p>
                                             )}
                                         </div>
 
-                                        <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.06] text-[11px] text-zinc-400">
-                                            <span className="tabular-nums">
-                                                {new Date(rev.createdAt).toLocaleDateString()}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => setReviewIdToDelete(rev.id)}
-                                                className="min-h-[32px] px-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-white/[0.04] flex items-center gap-1 dose-press"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                                                <span>Delete</span>
-                                            </button>
-                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setReviewIdToDelete(rev.id)}
+                                            aria-label={`Delete review for ${rev.drinkName}`}
+                                            className="w-9 h-9 rounded-xl bg-[#0c0c0f] hover:bg-red-950/60 border border-white/[0.08] text-zinc-400 hover:text-red-400 flex items-center justify-center shrink-0 dose-press"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                        </button>
                                     </div>
                                 ))}
                             </div>
@@ -433,7 +435,7 @@ export const ProfilePage: React.FC = () => {
                             />
                         </div>
                     ) : (
-                        <p className="text-xs text-zinc-400 py-4">
+                        <p className="text-xs text-zinc-400 px-5 py-8 text-center">
                             You have not posted any cocktail tasting notes yet.
                         </p>
                     )}
