@@ -1,13 +1,280 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --color-obsidian-950: #09090b;
+  --color-obsidian-900: #111114;
+  --color-obsidian-850: #16161b;
+  --color-obsidian-800: #1c1c22;
+
+  --color-crimson-500: #ef4444;
+  --color-crimson-600: #dc2626;
+  --color-crimson-700: #b91c1c;
+  --color-ruby-900: #7f111c;
+}
+
 @layer base {
   :root {
     color-scheme: dark;
+    --bg-ground: #09090b;
+    --bg-surface: #111114;
+    --bg-surface-raised: #18181d;
+    --bg-surface-inset: #0c0c0f;
+
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --border-brand: rgba(220, 38, 38, 0.45);
+
+    --ink-primary: #f4f4f5;
+    --ink-secondary: #a1a1aa;
+    --ink-muted: #91919c;
+
+    --ease-out-expo: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  html {
+    background-color: var(--bg-ground);
+    color: var(--ink-primary);
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  @media (pointer: fine), (display-mode: standalone) {
+    html,
+    body {
+      overscroll-behavior: none;
+    }
   }
 
   body {
-    @apply bg-neutral-950 text-neutral-100 antialiased select-none selection:bg-red-600 selection:text-white;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-    -webkit-tap-highlight-color: transparent;
+    min-height: 100dvh;
+    background-color: var(--bg-ground);
+    color: var(--ink-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    caret-color: #ef4444;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: rgba(220, 38, 38, 0.85);
+    color: #ffffff;
+  }
+
+  /* Controls must never select text on mobile long-press; body copy stays selectable */
+  button,
+  [role="button"],
+  nav a,
+  .dose-control {
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  input,
+  textarea,
+  select {
+    touch-action: manipulation;
+    color-scheme: dark;
+  }
+
+  select {
+    background-color: #0c0c0f;
+    color: #f4f4f5;
+  }
+
+  /* Prevent iOS Safari auto-zoom on coarse/mobile inputs */
+  @media (pointer: coarse), (max-width: 639px) {
+    input:not([type="checkbox"]):not([type="radio"]),
+    textarea,
+    select {
+      font-size: 16px;
+    }
+  }
+
+  /* Consistent accessible focus ring across interactive controls */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid rgba(239, 68, 68, 0.9);
+    outline-offset: 2px;
+  }
+
+  /* Subtle dark scrollbars matching obsidian surfaces */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.14);
+    border-radius: 9999px;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dose-surface {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .dose-surface-raised {
+    background-color: var(--bg-surface-raised);
+    border: 1px solid var(--border-strong);
+  }
+
+  .dose-surface-inset {
+    background-color: var(--bg-surface-inset);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .dose-input {
+    background-color: var(--bg-surface-inset);
+    border: 1px solid var(--border-subtle);
+    color: var(--ink-primary);
+    transition: border-color 150ms var(--ease-out-expo), background-color 150ms var(--ease-out-expo);
+  }
+
+  .dose-input::placeholder {
+    color: var(--ink-muted);
+  }
+
+  .dose-input:focus {
+    outline: none;
+    border-color: rgba(220, 38, 38, 0.75);
+  }
+
+  .dose-press {
+    transition:
+      transform 140ms var(--ease-out-expo),
+      background-color 160ms var(--ease-out-expo),
+      border-color 160ms var(--ease-out-expo),
+      color 160ms var(--ease-out-expo),
+      opacity 160ms var(--ease-out-expo);
+  }
+
+  .dose-press:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  /* Capability-gated hover elevations so touch devices never suffer sticky hovers */
+  @media (hover: hover) and (pointer: fine) {
+    .dose-card-hover {
+      transition:
+        border-color 180ms var(--ease-out-expo),
+        transform 180ms var(--ease-out-expo),
+        background-color 180ms var(--ease-out-expo);
+    }
+
+    .dose-card-hover:hover {
+      border-color: rgba(220, 38, 38, 0.42);
+    }
+
+    .dose-img-zoom {
+      transition: transform 360ms var(--ease-out-expo);
+    }
+
+    .group:hover .dose-img-zoom {
+      transform: scale(1.04);
+    }
+  }
+}
+
+@keyframes doseBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes doseSheetUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes doseDialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.dose-backdrop-enter {
+  animation: doseBackdropIn 180ms var(--ease-out-expo) both;
+}
+
+.dose-sheet-enter {
+  animation: doseSheetUp 240ms var(--ease-drawer) both;
+}
+
+@media (min-width: 640px) {
+  .dose-sheet-enter {
+    animation: doseDialogIn 200ms var(--ease-out-expo) both;
+  }
+}
+
+.dose-dialog-enter {
+  animation: doseDialogIn 180ms var(--ease-out-expo) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .dose-press:active:not(:disabled) {
+    transform: none;
+  }
+
+  .dose-sheet-enter,
+  .dose-dialog-enter,
+  .dose-backdrop-enter {
+    animation: doseBackdropIn 140ms ease both;
+  }
+
+  .dose-img-zoom {
+    transition: none;
   }
 }

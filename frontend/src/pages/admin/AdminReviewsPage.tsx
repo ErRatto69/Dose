@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '@/api/users.api';
 import { drinksApi } from '@/api/drinks.api';
 import { PaginationControls } from '@/components/common/PaginationControls';
-import { MessageSquare, Search, Trash2, Star, Loader2, X } from 'lucide-react';
-import {ConfirmDialogModal} from "@/components/common/ConfirmDialogModal";
+import { ConfirmDialogModal } from '@/components/common/ConfirmDialogModal';
+import { Search, Trash2, Star, X, MessageSquare } from 'lucide-react';
 
 export const AdminReviewsPage: React.FC = () => {
     const queryClient = useQueryClient();
@@ -37,96 +37,98 @@ export const AdminReviewsPage: React.FC = () => {
         mutationFn: (id: string) => drinksApi.deleteReview(id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
-            queryClient.invalidateQueries({ queryKey: ['drinks-catalog'] });
+            queryClient.invalidateQueries({ queryKey: ['drinks-catalog-infinite'] });
         },
     });
 
     return (
         <>
             <div className="space-y-6">
-                {/* Header */}
-                <div
-                    className="p-6 rounded-3xl bg-neutral-900 border border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
-                    <div>
-                        <h1 className="text-2xl sm:text-3xl font-black text-white flex items-center gap-2.5">
-                            <MessageSquare className="w-6 h-6 text-red-500"/>
-                            <span>Community Reviews Moderation</span>
-                        </h1>
-                        <p className="text-xs text-neutral-400 mt-0.5">
-                            Search and moderate all tasting notes across the catalog.
-                        </p>
-                    </div>
-                </div>
+                <section>
+                    <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
+                        Reviews Moderation
+                    </h1>
+                    <p className="text-xs sm:text-sm text-zinc-400 mt-1">
+                        Search and moderate community tasting notes across the cocktail catalog.
+                    </p>
+                </section>
 
                 {/* Search Input */}
                 <div className="relative max-w-md">
-                    <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2"/>
+                    <Search
+                        className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                        aria-hidden="true"
+                    />
                     <input
-                        type="text"
+                        type="search"
+                        aria-label="Search reviews by username, drink, or comment"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search by username, drink, or comment..."
-                        className="w-full pl-10 pr-9 py-2.5 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600"/>
+                        placeholder="Search by username, drink, or note…"
+                        className="w-full min-h-[44px] pl-10 pr-10 py-2.5 rounded-xl text-sm dose-input"
+                    />
                     {search && (
                         <button
                             type="button"
                             onClick={() => setSearch('')}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
+                            aria-label="Clear review search"
+                            className="w-9 h-9 rounded-lg flex items-center justify-center absolute right-1 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
                         >
-                            <X className="w-4 h-4"/>
+                            <X className="w-4 h-4" aria-hidden="true" />
                         </button>
                     )}
                 </div>
 
-                {/* Content List */}
                 {isLoading ? (
-                    <div className="py-24 flex flex-col items-center justify-center text-neutral-500 gap-2">
-                        <Loader2 className="w-8 h-8 animate-spin text-red-600"/>
-                        <span className="text-xs">Loading reviews...</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5" aria-busy="true" aria-label="Loading reviews">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            <div key={i} className="h-32 rounded-2xl bg-[#111114] border border-white/[0.08]" />
+                        ))}
                     </div>
                 ) : pagedReviews && pagedReviews.items.length > 0 ? (
                     <div className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                             {pagedReviews.items.map((rev) => (
-                                <div
+                                <article
                                     key={rev.id}
-                                    className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 flex flex-col justify-between gap-3 text-xs shadow-md"
+                                    className="p-4 rounded-2xl bg-[#111114] border border-white/[0.08] flex flex-col justify-between gap-3 text-xs"
                                 >
                                     <div>
                                         <div className="flex items-start justify-between gap-2 mb-1">
-                                            <div>
-                                                <strong className="text-sm font-bold text-white block">
+                                            <div className="min-w-0">
+                                                <strong className="text-sm font-extrabold text-white block truncate">
                                                     {rev.drinkName}
                                                 </strong>
-                                                <span className="text-neutral-400 text-[11px]">
-                                                by <strong className="text-neutral-200">{rev.username}</strong>
-                                            </span>
+                                                <span className="text-zinc-400 text-[11px]">
+                                                    by <strong className="text-zinc-200">{rev.username}</strong>
+                                                </span>
                                             </div>
-                                            <div className="flex items-center gap-1 text-amber-400 font-bold shrink-0">
-                                                <Star className="w-3.5 h-3.5 fill-amber-400"/>
+                                            <div className="flex items-center gap-1 text-amber-400 font-bold shrink-0 tabular-nums">
+                                                <Star className="w-3.5 h-3.5 fill-amber-400" aria-hidden="true" />
                                                 <span>{rev.rating}/5</span>
                                             </div>
                                         </div>
                                         {rev.comment && (
-                                            <p className="text-neutral-300 leading-relaxed mt-1">
-                                                &quot;{rev.comment}&quot;
+                                            <p className="text-zinc-300 leading-relaxed mt-1.5">
+                                                &ldquo;{rev.comment}&rdquo;
                                             </p>
                                         )}
                                     </div>
 
-                                    <div
-                                        className="flex items-center justify-between pt-2 border-t border-neutral-800 text-[11px] text-neutral-500">
-                                        <span>{new Date(rev.createdAt).toLocaleDateString()}</span>
+                                    <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.06] text-[11px] text-zinc-400">
+                                        <span className="tabular-nums">
+                                            {new Date(rev.createdAt).toLocaleDateString()}
+                                        </span>
                                         <button
                                             type="button"
-                                            onClick={() => setReviewToDelete({id: rev.id, username: rev.username})}
-                                            className="p-1.5 rounded-lg bg-neutral-950 hover:bg-red-950/70 border border-neutral-800 text-neutral-400 hover:text-red-400 transition-colors"
-                                            title="Delete review"
+                                            onClick={() => setReviewToDelete({ id: rev.id, username: rev.username })}
+                                            aria-label={`Delete review by ${rev.username}`}
+                                            className="w-9 h-9 rounded-xl bg-[#0c0c0f] hover:bg-red-950/60 border border-white/[0.08] text-zinc-400 hover:text-red-400 flex items-center justify-center dose-press"
                                         >
-                                            <Trash2 className="w-4 h-4"/>
+                                            <Trash2 className="w-4 h-4" aria-hidden="true" />
                                         </button>
                                     </div>
-                                </div>
+                                </article>
                             ))}
                         </div>
 
@@ -137,19 +139,21 @@ export const AdminReviewsPage: React.FC = () => {
                             hasPreviousPage={pagedReviews.hasPreviousPage}
                             hasNextPage={pagedReviews.hasNextPage}
                             onPageChange={(p) => setPageNumber(p)}
-                            itemLabel="reviews"/>
+                            itemLabel="reviews"
+                        />
                     </div>
                 ) : (
-                    <div
-                        className="py-16 text-center text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-3xl text-sm">
-                        No reviews found matching your search.
+                    <div className="py-16 text-center text-zinc-400 bg-[#111114] border border-white/[0.08] rounded-2xl text-xs space-y-2">
+                        <MessageSquare className="w-7 h-7 mx-auto text-zinc-500" aria-hidden="true" />
+                        <p>No reviews found matching your search.</p>
                     </div>
                 )}
             </div>
+
             <ConfirmDialogModal
                 isOpen={!!reviewToDelete}
                 title="Delete Community Review?"
-                message={`Remove tasting review posted by ${reviewToDelete?.username ?? 'user'}?`}
+                message={`Remove tasting review posted by ${reviewToDelete?.username ?? 'guest'}?`}
                 confirmLabel="Delete Review"
                 isDestructive
                 isLoading={deleteMutation.isPending}
@@ -160,6 +164,8 @@ export const AdminReviewsPage: React.FC = () => {
                         });
                     }
                 }}
-                onCancel={() => setReviewToDelete(null)}/></>
+                onCancel={() => setReviewToDelete(null)}
+            />
+        </>
     );
 };

@@ -9,9 +9,9 @@ import { formatVolume } from '@/utils/units';
 import { calculateStrengthMetrics, estimateDeltaBac } from '@/utils/strengthCalc';
 import { BottleStrengthMeter } from './BottleStrengthMeter';
 import { RecentTimePicker } from '@/components/common/RecentTimePicker';
+import { ModalShell } from '@/components/common/ModalShell';
 import type { Ingredient, StomachState } from '@/types';
 import {
-    X,
     Search,
     Plus,
     Minus,
@@ -20,6 +20,7 @@ import {
     Check,
     Loader2,
     AlertTriangle,
+    AlertCircle,
     Flame,
 } from 'lucide-react';
 import { matchesSearchQuery } from '@/utils/textSearch';
@@ -35,17 +36,17 @@ interface SelectedCustomComponent {
 }
 
 const QUICK_POUR_PRESETS = [
-    { label: '2 cl (Mini Shot)', cl: 2 },
-    { label: '4 cl (Std Shot)', cl: 4 },
-    { label: '15 cl (Wine Glass)', cl: 15 },
-    { label: '33 cl (Small Beer)', cl: 33 },
-    { label: '50 cl (Pint)', cl: 50 },
+    { name: 'Mini Shot', cl: 2 },
+    { name: 'Std Shot', cl: 4 },
+    { name: 'Wine', cl: 15 },
+    { name: 'Small Beer', cl: 33 },
+    { name: 'Pint', cl: 50 },
 ];
 
 export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
-                                                                                isOpen,
-                                                                                onClose,
-                                                                            }) => {
+    isOpen,
+    onClose,
+}) => {
     const { user } = useAuthStore();
     const { preferredUnit } = usePreferencesStore();
     const queryClient = useQueryClient();
@@ -58,6 +59,7 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
     const [customConsumedAt, setCustomConsumedAt] = useState(() => new Date().toISOString());
     const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
 
     const { data: allIngredients = [] } = useQuery({
         queryKey: ['all-ingredients'],
@@ -143,11 +145,10 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
         );
     }, [metrics.pureAlcoholGrams, user, stomachState]);
 
-    if (!isOpen) return null;
-
     const handleSubmit = async () => {
         if (items.length === 0) return;
         try {
+            setSubmitError(null);
             setIsSubmitting(true);
             const consumedAt = isNow
                 ? new Date().toISOString()
@@ -175,272 +176,278 @@ export const QuickCustomDrinkModal: React.FC<QuickCustomDrinkModalProps> = ({
             onClose();
         } catch (err) {
             console.error('Failed to log custom pour:', err);
+            setSubmitError('Could not log custom pour. Check your network and try again.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-neutral-950/80 backdrop-blur-md">
-            <div
-                className="w-full max-w-xl bg-neutral-900 border border-neutral-800 rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
-                role="dialog"
-                aria-modal="true"
-            >
-                {/* Header */}
-                <div className="p-4 sm:p-5 border-b border-neutral-800 flex items-center justify-between bg-neutral-900">
-                    <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-500 flex items-center gap-1">
-                            <Zap className="w-3.5 h-3.5 fill-red-500" />
-                            Instant Custom Pour
-                        </span>
-                        <h2 className="text-xl font-black text-white">Quick Shot, Beer or Mix</h2>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="p-2 text-neutral-400 hover:text-white rounded-full bg-neutral-800 transition-colors"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* Live Telemetry Bar */}
-                <div className="px-5 py-3 bg-neutral-950 border-b border-neutral-800 grid grid-cols-4 gap-2 text-xs">
-                    <div>
-                        <span className="text-neutral-400 block">Total Volume</span>
-                        <strong className="text-neutral-200 text-sm font-mono">
-                            {formatVolume(metrics.totalVolumeCl, preferredUnit) || '0 cl'}
-                        </strong>
-                    </div>
-                    <div className="text-center">
-                        <span className="text-neutral-400 block">Pure Alcohol</span>
-                        <strong className="text-white text-sm font-mono">
-                            {metrics.pureAlcoholGrams.toFixed(1)}g
-                        </strong>
-                    </div>
-                    <div className="text-center">
-                        <span className="text-neutral-400 block flex items-center justify-center gap-1">
-                            <Flame className="w-3 h-3 text-amber-500" />
-                            Calories
-                        </span>
-                        <strong className="text-amber-400 text-sm font-mono">
-                            ~{metrics.estimatedKcal} kcal
-                        </strong>
-                    </div>
-                    <div className="text-right">
-                        <span className="text-neutral-400 block">Est. +BAC</span>
-                        <strong className="text-red-400 text-sm font-mono">
-                            +{deltaBacEstimate.toFixed(2)} g/L
-                        </strong>
-                    </div>
-                </div>
-
-                {/* Body */}
-                <div className="p-5 overflow-y-auto space-y-5 flex-1">
-                    {/* Stomach State Selector */}
-                    <div>
-                        <label className="text-xs font-semibold text-neutral-300 block mb-2">
-                            Stomach Fullness (Metabolic Rate)
-                        </label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {(
-                                [
-                                    { value: 'Empty', label: 'Empty', desc: '+10% peak' },
-                                    { value: 'LightSnack', label: 'Light Snack', desc: 'Standard' },
-                                    { value: 'FullMeal', label: 'Full Meal', desc: '-22% peak' },
-                                ] as const
-                            ).map((item) => (
-                                <button
-                                    key={item.value}
-                                    type="button"
-                                    onClick={() => setStomachState(item.value)}
-                                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-0.5 ${
-                                        stomachState === item.value
-                                            ? 'bg-red-600 text-white border-red-500 shadow-sm shadow-red-600/30'
-                                            : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-                                    }`}
-                                >
-                                    <span>{item.label}</span>
-                                    <span className="text-[10px] font-normal opacity-80">{item.desc}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Search & Select Bottles */}
-                    <div>
-                        <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
-                            Select what you are drinking
-                        </label>
-                        <div className="relative">
-                            <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search spirit, beer, wine, or mixer..."
-                                className="w-full pl-10 pr-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-xs sm:text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600"
-                            />
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-2.5 max-h-32 overflow-y-auto p-0.5">
-                            {filteredIngredients.map((ing) => (
-                                <button
-                                    key={ing.id}
-                                    type="button"
-                                    onClick={() => addOrIncrementIngredient(ing)}
-                                    className="px-2.5 py-1.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 hover:border-red-600/50 text-xs text-neutral-200 flex items-center gap-1.5 transition-all"
-                                >
-                                    <Plus className="w-3.5 h-3.5 text-red-500" />
-                                    <span className="font-semibold">{ing.name}</span>
-                                    {ing.abv > 0 && (
-                                        <span className="text-[10px] font-mono text-red-400 font-bold">
-                                            {ing.abv}%
-                                        </span>
-                                    )}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Adjust Doses & Presets */}
-                    <div className="space-y-2.5">
-                        <label className="text-xs font-semibold text-neutral-300 block">
-                            Adjust Dose ({items.length} selected)
-                        </label>
-                        {items.length === 0 ? (
-                            <div className="p-6 rounded-2xl bg-neutral-950 border border-dashed border-neutral-800 text-center text-xs text-neutral-500">
-                                Tap one or more bottles above to add them to your glass.
-                            </div>
-                        ) : (
-                            items.map(({ ingredient, amountCl }) => (
-                                <div
-                                    key={ingredient.id}
-                                    className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-2.5"
-                                >
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div>
-                                            <div className="text-sm font-bold text-white">
-                                                {ingredient.name}
-                                            </div>
-                                            <div className="text-[11px] text-neutral-400">
-                                                {ingredient.subCategory}
-                                                {ingredient.abv > 0 && ` • ${ingredient.abv}% ABV`}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <button
-                                                type="button"
-                                                onClick={() => updateDose(ingredient.id, -0.5)}
-                                                className="w-8 h-8 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-200"
-                                            >
-                                                <Minus className="w-4 h-4" />
-                                            </button>
-                                            <span className="w-16 text-center font-mono font-bold text-sm text-red-400">
-                                                {formatVolume(amountCl, preferredUnit)}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => updateDose(ingredient.id, 0.5)}
-                                                className="w-8 h-8 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-200"
-                                            >
-                                                <Plus className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => removeItem(ingredient.id)}
-                                                className="w-8 h-8 rounded-xl bg-neutral-900 hover:bg-red-950/70 border border-neutral-800 text-neutral-400 hover:text-red-400 flex items-center justify-center ml-1 transition-colors"
-                                            >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Presets */}
-                                    <div className="flex flex-wrap gap-1.5 pt-1 border-t border-neutral-800/80">
-                                        {QUICK_POUR_PRESETS.map((preset) => (
-                                            <button
-                                                key={preset.cl}
-                                                type="button"
-                                                onClick={() => setExactDose(ingredient.id, preset.cl)}
-                                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all ${
-                                                    amountCl === preset.cl
-                                                        ? 'bg-red-600 text-white border-red-600'
-                                                        : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
-                                                }`}
-                                            >
-                                                {preset.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-
-                    {items.length > 0 && (
-                        <BottleStrengthMeter
-                            score1To10={metrics.bottleScore1To10}
-                            bottleRating={metrics.bottleVisualRating}
-                            abvPercent={metrics.abvPercent}
-                            compact
-                        />
-                    )}
-
-                    {/* Custom Label */}
-                    <div>
-                        <label className="text-xs font-semibold text-neutral-300 block mb-1">
-                            Optional Label
-                        </label>
-                        <input
-                            type="text"
-                            value={customName}
-                            onChange={(e) => setCustomName(e.target.value)}
-                            placeholder="e.g., Shot, Double Vodka, Draft Beer..."
-                            className="w-full px-3 py-2 text-xs rounded-xl bg-neutral-950 border border-neutral-800 text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-red-600"
-                        />
-                    </div>
-
-                    {/* Integrated Time Picker */}
-                    <RecentTimePicker
-                        value={customConsumedAt}
-                        onChange={(isoStr) => setCustomConsumedAt(isoStr)}
-                        isNow={isNow}
-                        onToggleNow={(now) => setIsNow(now)}
-                        label="Time Consumed"
-                    />
-
-                    {/* Safety Disclaimer Callout */}
-                    <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-800/60 text-xs text-red-200 flex items-start gap-2.5">
-                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                        <div className="leading-relaxed">
-                            <strong>Responsible Drinking:</strong> Do not drive if your BAC exceeds 0.50 g/L. Any drink logged here can be edited or deleted within 12 hours from your <strong>My BAC</strong> telemetry page.
-                        </div>
-                    </div>
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 sm:p-5 bg-neutral-900 border-t border-neutral-800">
-                    <button
-                        type="button"
-                        onClick={handleSubmit}
-                        disabled={isSubmitting || items.length === 0 || metrics.totalVolumeCl <= 0}
-                        className="w-full py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 active:scale-[0.99] transition-all"
-                    >
-                        {isSubmitting ? (
-                            <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span>Logging...</span>
-                            </>
-                        ) : (
-                            <>
-                                <Check className="w-4 h-4 stroke-[3]" />
-                                <span>Drink &amp; Log Custom Pour</span>
-                            </>
-                        )}
-                    </button>
-                </div>
+    const subheader = (
+        <div className="px-5 py-3 grid grid-cols-4 gap-2 text-xs">
+            <div>
+                <span className="text-zinc-400 block">Volume</span>
+                <strong className="text-zinc-100 text-sm font-extrabold tabular-nums">
+                    {formatVolume(metrics.totalVolumeCl, preferredUnit) || '0 cl'}
+                </strong>
+            </div>
+            <div className="text-center">
+                <span className="text-zinc-400 block">Ethanol</span>
+                <strong className="text-white text-sm font-extrabold tabular-nums">
+                    {metrics.pureAlcoholGrams.toFixed(1)} g
+                </strong>
+            </div>
+            <div className="text-center">
+                <span className="text-zinc-400 flex items-center justify-center gap-1">
+                    <Flame className="w-3 h-3 text-amber-400" aria-hidden="true" />
+                    <span>Calories</span>
+                </span>
+                <strong className="text-amber-300 text-sm font-extrabold tabular-nums">
+                    {metrics.estimatedKcal} kcal
+                </strong>
+            </div>
+            <div className="text-right">
+                <span className="text-zinc-400 block">Est. +BAC</span>
+                <strong className="text-red-400 text-sm font-extrabold tabular-nums">
+                    +{deltaBacEstimate.toFixed(2)} g/L
+                </strong>
             </div>
         </div>
+    );
+
+    const footer = (
+        <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting || items.length === 0 || metrics.totalVolumeCl <= 0}
+            className="w-full min-h-[46px] py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-extrabold text-sm flex items-center justify-center gap-2 border border-red-500/50 dose-press"
+        >
+            {isSubmitting ? (
+                <>
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                    <span>Logging Pour…</span>
+                </>
+            ) : (
+                <>
+                    <Check className="w-4 h-4 stroke-[2.5]" aria-hidden="true" />
+                    <span>Drink &amp; Log Custom Pour</span>
+                </>
+            )}
+        </button>
+    );
+
+    return (
+        <ModalShell
+            isOpen={isOpen}
+            onClose={onClose}
+            title="Quick Shot, Beer or Mix"
+            badge={
+                <span className="text-xs font-bold text-red-400 inline-flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 fill-red-400" aria-hidden="true" />
+                    <span>Instant Custom Pour</span>
+                </span>
+            }
+            subheader={subheader}
+            footer={footer}
+            closeDisabled={isSubmitting}
+        >
+            <div className="space-y-5">
+                {submitError && (
+                    <div
+                        role="alert"
+                        className="p-3 rounded-xl bg-red-950/60 border border-red-700/60 text-xs text-red-200 flex items-center gap-2"
+                    >
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" aria-hidden="true" />
+                        <span>{submitError}</span>
+                    </div>
+                )}
+
+                {/* Stomach State */}
+                <div>
+                    <span className="text-xs font-bold text-zinc-200 block mb-2">
+                        Stomach Fullness (Absorption Rate)
+                    </span>
+                    <div className="grid grid-cols-3 gap-2">
+                        {(
+                            [
+                                { value: 'Empty', label: 'Empty', desc: '+10% peak' },
+                                { value: 'LightSnack', label: 'Light Snack', desc: 'Standard' },
+                                { value: 'FullMeal', label: 'Full Meal', desc: '-22% peak' },
+                            ] as const
+                        ).map((item) => (
+                            <button
+                                key={item.value}
+                                type="button"
+                                aria-pressed={stomachState === item.value}
+                                onClick={() => setStomachState(item.value)}
+                                className={`min-h-[48px] py-2 px-2.5 rounded-xl text-xs font-bold border flex flex-col items-center justify-center gap-0.5 dose-press ${
+                                    stomachState === item.value
+                                        ? 'bg-red-600 text-white border-red-500/70'
+                                        : 'bg-[#0c0c0f] border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                                }`}
+                            >
+                                <span>{item.label}</span>
+                                <span className="text-[11px] font-medium opacity-80">{item.desc}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Search & Select Bottles */}
+                <div>
+                    <label htmlFor="quick-pour-search" className="text-xs font-bold text-zinc-200 block mb-1.5">
+                        Pick Bottles or Mixers
+                    </label>
+                    <div className="relative">
+                        <Search
+                            className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                            aria-hidden="true"
+                        />
+                        <input
+                            id="quick-pour-search"
+                            type="search"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search spirit, beer, wine, or mixer…"
+                            className="w-full min-h-[42px] pl-10 pr-4 py-2 rounded-xl text-xs sm:text-sm dose-input"
+                        />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-2.5 max-h-36 overflow-y-auto overscroll-contain p-0.5">
+                        {filteredIngredients.map((ing) => (
+                            <button
+                                key={ing.id}
+                                type="button"
+                                onClick={() => addOrIncrementIngredient(ing)}
+                                className="min-h-[38px] px-3 py-1.5 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] hover:border-red-500/45 text-xs text-zinc-100 flex items-center gap-1.5 dose-press"
+                            >
+                                <Plus className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
+                                <span className="font-bold">{ing.name}</span>
+                                {ing.abv > 0 && (
+                                    <span className="text-[11px] tabular-nums text-red-400 font-bold">
+                                        {ing.abv}%
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Selected Pours */}
+                <div className="space-y-2.5">
+                    <span className="text-xs font-bold text-zinc-200 block">
+                        Pour Amounts ({items.length} selected)
+                    </span>
+                    {items.length === 0 ? (
+                        <div className="p-6 rounded-2xl bg-[#0c0c0f] border border-dashed border-white/15 text-center text-xs text-zinc-400">
+                            Tap one or more bottles above to build your pour.
+                        </div>
+                    ) : (
+                        items.map(({ ingredient, amountCl }) => (
+                            <div
+                                key={ingredient.id}
+                                className="p-3.5 rounded-2xl bg-[#0c0c0f] border border-white/[0.08] space-y-2.5"
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="text-sm font-bold text-white truncate">
+                                            {ingredient.name}
+                                        </div>
+                                        <div className="text-[11px] text-zinc-400">
+                                            {ingredient.subCategory}
+                                            {ingredient.abv > 0 && (
+                                                <span className="tabular-nums"> · {ingredient.abv}% ABV</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => updateDose(ingredient.id, -0.5)}
+                                            aria-label={`Decrease ${ingredient.name}`}
+                                            className="w-9 h-9 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] flex items-center justify-center text-zinc-200 dose-press"
+                                        >
+                                            <Minus className="w-4 h-4" aria-hidden="true" />
+                                        </button>
+                                        <span className="w-16 text-center tabular-nums font-extrabold text-sm text-red-400">
+                                            {formatVolume(amountCl, preferredUnit)}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => updateDose(ingredient.id, 0.5)}
+                                            aria-label={`Increase ${ingredient.name}`}
+                                            className="w-9 h-9 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] flex items-center justify-center text-zinc-200 dose-press"
+                                        >
+                                            <Plus className="w-4 h-4" aria-hidden="true" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => removeItem(ingredient.id)}
+                                            aria-label={`Remove ${ingredient.name}`}
+                                            className="w-9 h-9 rounded-xl bg-[#111114] hover:bg-red-950/60 border border-white/[0.08] text-zinc-400 hover:text-red-400 flex items-center justify-center ml-0.5 dose-press"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-white/[0.06]">
+                                    {QUICK_POUR_PRESETS.map((preset) => (
+                                        <button
+                                            key={preset.cl}
+                                            type="button"
+                                            onClick={() => setExactDose(ingredient.id, preset.cl)}
+                                            className={`min-h-[32px] px-2.5 py-1 rounded-lg text-[11px] font-bold border tabular-nums dose-press ${
+                                                amountCl === preset.cl
+                                                    ? 'bg-red-600 text-white border-red-500/70'
+                                                    : 'bg-[#111114] border-white/[0.08] text-zinc-400 hover:text-white'
+                                            }`}
+                                        >
+                                            {formatVolume(preset.cl, preferredUnit)} ({preset.name})
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {items.length > 0 && (
+                    <BottleStrengthMeter
+                        score1To10={metrics.bottleScore1To10}
+                        bottleRating={metrics.bottleVisualRating}
+                        abvPercent={metrics.abvPercent}
+                        compact
+                    />
+                )}
+
+                <div>
+                    <label htmlFor="quick-pour-label" className="text-xs font-bold text-zinc-200 block mb-1.5">
+                        Optional Label
+                    </label>
+                    <input
+                        id="quick-pour-label"
+                        type="text"
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        placeholder="e.g., Double Vodka, Draft Pint…"
+                        className="w-full min-h-[42px] px-3.5 py-2 text-xs rounded-xl dose-input"
+                    />
+                </div>
+
+                <RecentTimePicker
+                    value={customConsumedAt}
+                    onChange={(isoStr) => setCustomConsumedAt(isoStr)}
+                    isNow={isNow}
+                    onToggleNow={(now) => setIsNow(now)}
+                    label="Time Consumed"
+                />
+
+                <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-700/50 text-xs text-red-100 flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" aria-hidden="true" />
+                    <div className="leading-relaxed">
+                        <strong>Responsible Drinking:</strong> Do not drive if your BAC exceeds 0.50 g/L. Logged entries stay editable for 12 hours on <strong>My BAC</strong>.
+                    </div>
+                </div>
+            </div>
+        </ModalShell>
     );
 };

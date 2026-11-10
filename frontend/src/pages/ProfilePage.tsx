@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '@/api/users.api';
 import { drinksApi } from '@/api/drinks.api';
 import { bacApi } from '@/api/bac.api';
+import { queryKeys } from '@/api/queryKeys';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePreferencesStore } from '@/store/usePreferencesStore';
+import { isAdmin } from '@/utils/auth';
 import { BacGaugeCard } from '@/components/safety/BacGaugeCard';
 import { CocktailPassportSection } from '@/components/gamification/CocktailPassportSection';
 import { PaginationControls } from '@/components/common/PaginationControls';
+import { ConfirmDialogModal } from '@/components/common/ConfirmDialogModal';
 import type { BiologicalSex } from '@/types';
 import {
     Save,
@@ -20,9 +23,10 @@ import {
     Trash2,
     LogOut,
     Sliders,
-    X,
+    ShieldCheck,
+    Users,
+    ChevronRight,
 } from 'lucide-react';
-import {ConfirmDialogModal} from "@/components/common/ConfirmDialogModal";
 
 export const ProfilePage: React.FC = () => {
     const navigate = useNavigate();
@@ -30,25 +34,40 @@ export const ProfilePage: React.FC = () => {
     const { preferredUnit, setUnit } = usePreferencesStore();
     const queryClient = useQueryClient();
 
-    const [weightKg, setWeightKg] = useState<string>(String(user?.weightKg ?? 75));
-    const [heightCm, setHeightCm] = useState<string>(String(user?.heightCm ?? 175));
-    const [sex, setSex] = useState<BiologicalSex>(
-        String(user?.sex) === '1' || user?.sex === 'Female' ? 'Female' : 'Male'
-    );
-    const [birthYear, setBirthYear] = useState<string>(user?.birthYear ? String(user.birthYear) : '1998');
+    const [draft, setDraft] = useState<{
+        weightKg?: string;
+        heightCm?: string;
+        sex?: BiologicalSex;
+        birthYear?: string;
+    }>({});
     const [savedSuccess, setSavedSuccess] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [reviewsPage, setReviewsPage] = useState(1);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
     const [reviewIdToDelete, setReviewIdToDelete] = useState<string | null>(null);
 
+    const hasAdminAccess = isAdmin(user);
+
     const { data: freshProfile } = useQuery({
         queryKey: ['my-profile'],
-        queryFn: usersApi.getMe,
+        queryFn: async () => {
+            const profile = await usersApi.getMe();
+            updateUser(profile);
+            return profile;
+        },
     });
 
+    const activeProfile = freshProfile ?? user;
+    const weightKg = draft.weightKg ?? String(activeProfile?.weightKg ?? 75);
+    const heightCm = draft.heightCm ?? String(activeProfile?.heightCm ?? 175);
+    const sex: BiologicalSex =
+        draft.sex ??
+        (String(activeProfile?.sex) === '1' || activeProfile?.sex === 'Female' ? 'Female' : 'Male');
+    const birthYear =
+        draft.birthYear ?? (activeProfile?.birthYear ? String(activeProfile.birthYear) : '');
+
     const { data: bacData } = useQuery({
-        queryKey: ['my-bac-status'],
+        queryKey: queryKeys.bac.me(),
         queryFn: bacApi.getMyBac,
     });
 
@@ -61,21 +80,9 @@ export const ProfilePage: React.FC = () => {
         mutationFn: (id: string) => drinksApi.deleteReview(id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['my-reviews'] });
-            queryClient.invalidateQueries({ queryKey: ['drinks-catalog'] });
+            queryClient.invalidateQueries({ queryKey: ['drinks-catalog-infinite'] });
         },
     });
-
-    useEffect(() => {
-        if (freshProfile) {
-            setWeightKg(String(freshProfile.weightKg));
-            setHeightCm(String(freshProfile.heightCm));
-            setSex(
-                String(freshProfile.sex) === '1' || freshProfile.sex === 'Female' ? 'Female' : 'Male'
-            );
-            setBirthYear(freshProfile.birthYear ? String(freshProfile.birthYear) : '');
-            updateUser(freshProfile);
-        }
-    }, [freshProfile, updateUser]);
 
     const updateMutation = useMutation({
         mutationFn: async () => {
@@ -91,12 +98,14 @@ export const ProfilePage: React.FC = () => {
         },
         onSuccess: (updated) => {
             updateUser(updated);
+            setDraft({});
             setSavedSuccess(true);
-            queryClient.invalidateQueries({ queryKey: ['my-bac-status'] });
+            queryClient.invalidateQueries({ queryKey: ['my-profile'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.bac.me() });
             setTimeout(() => setSavedSuccess(false), 3000);
         },
         onError: () => {
-            setErrorMsg('Please enter valid biometrics (Weight: 30-250kg, Height: 100-230cm).');
+            setErrorMsg('Please enter valid biometrics (Weight: 30–250 kg, Height: 100–230 cm).');
         },
     });
 
@@ -106,122 +115,165 @@ export const ProfilePage: React.FC = () => {
         navigate('/login');
     };
 
-    const userInitial = user?.username ? user.username.charAt(0).toUpperCase() : 'U';
+    const userInitial = activeProfile?.username ? activeProfile.username.charAt(0).toUpperCase() : 'U';
 
     return (
         <>
             <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                    {/* Left Column: Profile, Biometrics & Preferences */}
                     <div className="lg:col-span-7 space-y-6">
-                        {/* User Card with Inline Sign Out */}
-                        <div
-                            className="p-5 rounded-3xl bg-neutral-900 border border-neutral-800 shadow-xl flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-3.5">
-                                <div
-                                    className="w-12 h-12 rounded-2xl bg-neutral-950 border border-red-600/40 flex items-center justify-center text-lg font-black text-red-500 shadow-inner">
+                        <section className="p-5 rounded-2xl bg-[#111114] border border-white/[0.08] flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3.5 min-w-0">
+                                <div className="w-12 h-12 rounded-2xl bg-[#0c0c0f] border border-red-600/45 flex items-center justify-center text-lg font-extrabold text-red-400 shrink-0">
                                     {userInitial}
                                 </div>
-                                <div>
-                                    <h1 className="text-lg font-bold text-white leading-tight flex items-center gap-2">
-                                        <span>{user?.username}</span>
-                                        <span
-                                            className="text-[10px] px-2 py-0.5 rounded-full bg-red-600/15 border border-red-600/30 text-red-400 font-semibold uppercase tracking-wider">
-                                        {user?.role}
-                                    </span>
+                                <div className="min-w-0">
+                                    <h1 className="text-lg font-extrabold text-white leading-tight flex flex-wrap items-center gap-2">
+                                        <span className="truncate">{activeProfile?.username}</span>
+                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-600/15 border border-red-500/35 text-red-300 font-semibold">
+                                            {activeProfile?.role}
+                                        </span>
                                     </h1>
-                                    <p className="text-xs text-neutral-400 mt-0.5">{user?.email}</p>
+                                    <p className="text-xs text-zinc-400 mt-0.5 truncate">{activeProfile?.email}</p>
                                 </div>
                             </div>
 
                             <button
                                 type="button"
                                 onClick={() => setIsLogoutModalOpen(true)}
-                                className="px-3.5 py-2 rounded-xl bg-neutral-950 hover:bg-red-950/40 border border-neutral-800 hover:border-red-600/40 text-neutral-400 hover:text-red-400 text-xs font-bold flex items-center gap-1.5 transition-all"
-                                title="Sign out of your account"
+                                className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#0c0c0f] hover:bg-red-950/50 border border-white/[0.08] hover:border-red-500/45 text-zinc-300 hover:text-red-300 text-xs font-bold flex items-center gap-1.5 shrink-0 dose-press"
                             >
-                                <LogOut className="w-3.5 h-3.5"/>
+                                <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
                                 <span>Sign Out</span>
                             </button>
-                        </div>
+                        </section>
 
-                        {/* Biometrics & Unit Settings Form */}
+                        {hasAdminAccess && (
+                            <section className="p-5 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-3">
+                                <h2 className="text-sm font-extrabold text-white">Host Administration</h2>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <Link
+                                        to="/admin/safety"
+                                        className="min-h-[48px] p-3 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] flex items-center justify-between gap-2 text-xs font-bold text-zinc-200 dose-press"
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <ShieldCheck className="w-4 h-4 text-red-400" aria-hidden="true" />
+                                            <span>Party Safety</span>
+                                        </span>
+                                        <ChevronRight className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+                                    </Link>
+                                    <Link
+                                        to="/admin/users"
+                                        className="min-h-[48px] p-3 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] flex items-center justify-between gap-2 text-xs font-bold text-zinc-200 dose-press"
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <Users className="w-4 h-4 text-red-400" aria-hidden="true" />
+                                            <span>Users</span>
+                                        </span>
+                                        <ChevronRight className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+                                    </Link>
+                                    <Link
+                                        to="/admin/reviews"
+                                        className="min-h-[48px] p-3 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] flex items-center justify-between gap-2 text-xs font-bold text-zinc-200 dose-press"
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <MessageSquare className="w-4 h-4 text-red-400" aria-hidden="true" />
+                                            <span>Reviews</span>
+                                        </span>
+                                        <ChevronRight className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+                                    </Link>
+                                </div>
+                            </section>
+                        )}
+
                         <form
                             onSubmit={(e) => {
                                 e.preventDefault();
                                 updateMutation.mutate();
                             }}
-                            className="p-6 rounded-3xl bg-neutral-900 border border-neutral-800 space-y-5 shadow-xl"
+                            className="p-5 sm:p-6 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-5"
                         >
-                            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
-                                <div>
-                                    <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-                                        Biometrics &amp; Units
-                                    </h2>
-                                    <p className="text-xs text-neutral-400 mt-0.5">
-                                        Used for BAC metabolic rate calculations and recipe volume display.
-                                    </p>
-                                </div>
+                            <div className="pb-3 border-b border-white/[0.08]">
+                                <h2 className="text-base font-extrabold text-white">
+                                    Biometrics &amp; Units
+                                </h2>
+                                <p className="text-xs text-zinc-400 mt-0.5">
+                                    Used for BAC metabolic calculations and cocktail recipe volume formatting.
+                                </p>
                             </div>
 
                             {errorMsg && (
                                 <div
-                                    className="p-3 rounded-xl bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-                                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400"/>
+                                    role="alert"
+                                    className="p-3 rounded-xl bg-red-950/60 border border-red-700/60 text-red-200 text-xs flex items-center gap-2"
+                                >
+                                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400" aria-hidden="true" />
                                     <span>{errorMsg}</span>
                                 </div>
                             )}
 
                             {savedSuccess && (
                                 <div
-                                    className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-800 text-emerald-300 text-xs flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4 shrink-0"/>
-                                    <span>Settings saved successfully!</span>
+                                    role="status"
+                                    aria-live="polite"
+                                    className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-700/60 text-emerald-200 text-xs flex items-center gap-2"
+                                >
+                                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                                    <span>Biometrics and unit preferences saved.</span>
                                 </div>
                             )}
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
+                                    <label htmlFor="profile-weight" className="text-xs font-bold text-zinc-200 block mb-1.5">
                                         Weight (kg)
                                     </label>
                                     <input
+                                        id="profile-weight"
                                         type="number"
+                                        inputMode="decimal"
                                         step="0.5"
                                         min="30"
                                         max="250"
                                         required
                                         value={weightKg}
-                                        onChange={(e) => setWeightKg(e.target.value)}
-                                        className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-red-600"/>
+                                        onChange={(e) => setDraft((d) => ({ ...d, weightKg: e.target.value }))}
+                                        className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-sm tabular-nums dose-input"
+                                    />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
+                                    <label htmlFor="profile-height" className="text-xs font-bold text-zinc-200 block mb-1.5">
                                         Height (cm)
                                     </label>
                                     <input
+                                        id="profile-height"
                                         type="number"
+                                        inputMode="numeric"
                                         step="1"
                                         min="100"
                                         max="230"
                                         required
                                         value={heightCm}
-                                        onChange={(e) => setHeightCm(e.target.value)}
-                                        className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-red-600"/>
+                                        onChange={(e) => setDraft((d) => ({ ...d, heightCm: e.target.value }))}
+                                        className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-sm tabular-nums dose-input"
+                                    />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
+                                    <span className="text-xs font-bold text-zinc-200 block mb-1.5">
                                         Biological Sex
-                                    </label>
+                                    </span>
                                     <div className="grid grid-cols-2 gap-2">
                                         {(['Male', 'Female'] as BiologicalSex[]).map((option) => (
                                             <button
                                                 key={option}
                                                 type="button"
-                                                onClick={() => setSex(option)}
-                                                className={`py-2 rounded-xl text-xs font-bold border transition-all ${sex === option
-                                                    ? 'bg-red-600/20 border-red-600 text-red-300'
-                                                    : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'}`}
+                                                aria-pressed={sex === option}
+                                                onClick={() => setDraft((d) => ({ ...d, sex: option }))}
+                                                className={`min-h-[42px] py-2 rounded-xl text-xs font-bold border dose-press ${
+                                                    sex === option
+                                                        ? 'bg-red-600/20 border-red-500 text-red-200'
+                                                        : 'bg-[#0c0c0f] border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                                                }`}
                                             >
                                                 {option}
                                             </button>
@@ -229,47 +281,54 @@ export const ProfilePage: React.FC = () => {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
+                                    <label htmlFor="profile-birth" className="text-xs font-bold text-zinc-200 block mb-1.5">
                                         Birth Year
                                     </label>
                                     <input
+                                        id="profile-birth"
                                         type="number"
+                                        inputMode="numeric"
                                         min="1920"
                                         max="2010"
                                         value={birthYear}
-                                        onChange={(e) => setBirthYear(e.target.value)}
-                                        className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-white focus:outline-none focus:border-red-600"/>
+                                        onChange={(e) => setDraft((d) => ({ ...d, birthYear: e.target.value }))}
+                                        className="w-full min-h-[42px] px-3.5 py-2.5 rounded-xl text-sm tabular-nums dose-input"
+                                    />
                                 </div>
                             </div>
 
-                            {/* Integrated Segmented Volume Unit Control */}
-                            <div
-                                className="pt-2 border-t border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="pt-3 border-t border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                 <div>
-                                <span className="text-xs font-semibold text-neutral-200 flex items-center gap-1.5">
-                                    <Sliders className="w-3.5 h-3.5 text-red-500"/>
-                                    Volume Unit
-                                </span>
-                                    <span className="text-[11px] text-neutral-500 block">
-                                    Catalog recipes &amp; pour amounts
-                                </span>
+                                    <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                                        <Sliders className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
+                                        <span>Volume Unit</span>
+                                    </span>
+                                    <span className="text-[11px] text-zinc-400 block mt-0.5">
+                                        Display unit across catalog recipes and custom pours
+                                    </span>
                                 </div>
 
                                 <div
-                                    className="inline-flex p-1 bg-neutral-950 border border-neutral-800 rounded-xl self-start sm:self-auto">
+                                    role="group"
+                                    aria-label="Volume display unit"
+                                    className="inline-flex p-1 bg-[#0c0c0f] border border-white/[0.08] rounded-xl self-start sm:self-auto"
+                                >
                                     {(
                                         [
-                                            {unit: 'cl', label: 'cl'},
-                                            {unit: 'oz', label: 'oz'},
+                                            { unit: 'cl', label: 'cl' },
+                                            { unit: 'oz', label: 'oz' },
                                         ] as const
-                                    ).map(({unit, label}) => (
+                                    ).map(({ unit, label }) => (
                                         <button
                                             key={unit}
                                             type="button"
+                                            aria-pressed={preferredUnit === unit}
                                             onClick={() => setUnit(unit)}
-                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${preferredUnit === unit
-                                                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                                                : 'text-neutral-400 hover:text-neutral-200'}`}
+                                            className={`min-h-[36px] px-4 py-1.5 rounded-lg text-xs font-bold dose-press ${
+                                                preferredUnit === unit
+                                                    ? 'bg-red-600 text-white'
+                                                    : 'text-zinc-400 hover:text-zinc-200'
+                                            }`}
                                         >
                                             {label}
                                         </button>
@@ -280,16 +339,16 @@ export const ProfilePage: React.FC = () => {
                             <button
                                 type="submit"
                                 disabled={updateMutation.isPending}
-                                className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/25 transition-all active:scale-[0.99]"
+                                className="w-full min-h-[46px] py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 border border-red-500/50 dose-press"
                             >
                                 {updateMutation.isPending ? (
                                     <>
-                                        <Loader2 className="w-4 h-4 animate-spin"/>
-                                        <span>Saving...</span>
+                                        <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                                        <span>Saving…</span>
                                     </>
                                 ) : (
                                     <>
-                                        <Save className="w-4 h-4"/>
+                                        <Save className="w-4 h-4" aria-hidden="true" />
                                         <span>Save Settings</span>
                                     </>
                                 )}
@@ -297,8 +356,7 @@ export const ProfilePage: React.FC = () => {
                         </form>
                     </div>
 
-                    {/* Right Column: BAC Gauge Card */}
-                    <div className="lg:col-span-5 space-y-4">
+                    <div className="lg:col-span-5">
                         {bacData && (
                             <BacGaugeCard
                                 bacGramsPerLiter={bacData.currentBacGramsPerLiter}
@@ -306,57 +364,57 @@ export const ProfilePage: React.FC = () => {
                                 safetyLevel={bacData.safetyLevel}
                                 safetyMessage={bacData.safetyMessage}
                                 estimatedSoberAt={bacData.estimatedSoberAt}
-                                totalAlcoholGramsLast12h={bacData.totalAlcoholGramsLast12h}/>
+                                totalAlcoholGramsLast12h={bacData.totalAlcoholGramsLast12h}
+                            />
                         )}
                     </div>
                 </div>
 
-                {/* Cocktail Passport (Lifetime Achievements & Rolling Monthly Badges) */}
                 <CocktailPassportSection />
 
-                {/* My Reviews Section (Paginated) */}
-                <div className="p-6 rounded-3xl bg-neutral-900 border border-neutral-800 shadow-xl space-y-4">
+                <section className="p-5 sm:p-6 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-4">
                     <div className="flex items-center gap-2">
-                        <MessageSquare className="w-5 h-5 text-red-500"/>
-                        <h2 className="text-lg font-bold text-white">
+                        <MessageSquare className="w-5 h-5 text-red-400" aria-hidden="true" />
+                        <h2 className="text-lg font-extrabold text-white">
                             My Tasting Reviews {myReviews ? `(${myReviews.totalCount})` : ''}
                         </h2>
                     </div>
 
                     {myReviews && myReviews.items.length > 0 ? (
-                        <div className="space-y-2.5">
+                        <div className="space-y-3">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {myReviews.items.map((rev) => (
                                     <div
                                         key={rev.id}
-                                        className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 flex flex-col justify-between gap-3 text-xs"
+                                        className="p-4 rounded-xl bg-[#0c0c0f] border border-white/[0.08] flex flex-col justify-between gap-3 text-xs"
                                     >
                                         <div>
                                             <div className="flex items-center justify-between gap-2 mb-1">
                                                 <strong className="text-sm font-bold text-white">
                                                     {rev.drinkName}
                                                 </strong>
-                                                <div className="flex items-center gap-1 text-amber-400 font-bold">
-                                                    <Star className="w-3.5 h-3.5 fill-amber-400"/>
+                                                <div className="flex items-center gap-1 text-amber-400 font-bold tabular-nums shrink-0">
+                                                    <Star className="w-3.5 h-3.5 fill-amber-400" aria-hidden="true" />
                                                     <span>{rev.rating}/5</span>
                                                 </div>
                                             </div>
                                             {rev.comment && (
-                                                <p className="text-neutral-300 leading-relaxed mt-1">
-                                                    &quot;{rev.comment}&quot;
+                                                <p className="text-zinc-300 leading-relaxed mt-1">
+                                                    &ldquo;{rev.comment}&rdquo;
                                                 </p>
                                             )}
                                         </div>
 
-                                        <div
-                                            className="flex items-center justify-between pt-2 border-t border-neutral-800 text-[11px] text-neutral-500">
-                                            <span>{new Date(rev.createdAt).toLocaleDateString()}</span>
+                                        <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.06] text-[11px] text-zinc-400">
+                                            <span className="tabular-nums">
+                                                {new Date(rev.createdAt).toLocaleDateString()}
+                                            </span>
                                             <button
                                                 type="button"
                                                 onClick={() => setReviewIdToDelete(rev.id)}
-                                                className="text-neutral-400 hover:text-red-400 flex items-center gap-1 transition-colors"
+                                                className="min-h-[32px] px-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-white/[0.04] flex items-center gap-1 dose-press"
                                             >
-                                                <Trash2 className="w-3.5 h-3.5"/>
+                                                <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                                                 <span>Delete</span>
                                             </button>
                                         </div>
@@ -371,67 +429,27 @@ export const ProfilePage: React.FC = () => {
                                 hasPreviousPage={myReviews.hasPreviousPage}
                                 hasNextPage={myReviews.hasNextPage}
                                 onPageChange={(page) => setReviewsPage(page)}
-                                itemLabel="reviews"/>
+                                itemLabel="reviews"
+                            />
                         </div>
                     ) : (
-                        <p className="text-xs text-neutral-500 py-4">
-                            You have not reviewed any cocktails yet.
+                        <p className="text-xs text-zinc-400 py-4">
+                            You have not posted any cocktail tasting notes yet.
                         </p>
                     )}
-                </div>
-
-                {/* Compact Logout Confirmation Dialog */}
-                {isLogoutModalOpen && (
-                    <div
-                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md">
-                        <div
-                            className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-4"
-                            role="dialog"
-                            aria-modal="true"
-                        >
-                            <div className="flex items-start justify-between gap-3">
-                                <div
-                                    className="w-10 h-10 rounded-2xl bg-red-600/15 border border-red-600/30 flex items-center justify-center text-red-500">
-                                    <LogOut className="w-5 h-5"/>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsLogoutModalOpen(false)}
-                                    className="p-1.5 text-neutral-400 hover:text-white rounded-full bg-neutral-800 transition-colors"
-                                    aria-label="Close dialog"
-                                >
-                                    <X className="w-4 h-4"/>
-                                </button>
-                            </div>
-
-                            <div>
-                                <h3 className="text-base font-bold text-white">Sign out of Dose?</h3>
-                                <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
-                                    You will need your credentials to log back in and track drinks.
-                                </p>
-                            </div>
-
-                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsLogoutModalOpen(false)}
-                                    className="px-3.5 py-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 text-xs font-bold transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleConfirmLogout}
-                                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-red-600/30 transition-all active:scale-95"
-                                >
-                                    <LogOut className="w-3.5 h-3.5"/>
-                                    <span>Sign Out</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                </section>
             </div>
+
+            <ConfirmDialogModal
+                isOpen={isLogoutModalOpen}
+                title="Sign out of Dose?"
+                message="You will need your credentials to log back in and track pours."
+                confirmLabel="Sign Out"
+                isDestructive
+                onConfirm={handleConfirmLogout}
+                onCancel={() => setIsLogoutModalOpen(false)}
+            />
+
             <ConfirmDialogModal
                 isOpen={!!reviewIdToDelete}
                 title="Delete Tasting Review?"
@@ -446,6 +464,8 @@ export const ProfilePage: React.FC = () => {
                         });
                     }
                 }}
-                onCancel={() => setReviewIdToDelete(null)}/></>
+                onCancel={() => setReviewIdToDelete(null)}
+            />
+        </>
     );
 };

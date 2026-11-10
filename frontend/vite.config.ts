@@ -15,8 +15,8 @@ export default defineConfig({
         name: 'Dose - Bar & Drinking Tracker',
         short_name: 'Dose',
         description: 'Track drinks, measure BAC realtime, and discover craft cocktail recipes.',
-        theme_color: '#0f172a',
-        background_color: '#020617',
+        theme_color: '#09090b',
+        background_color: '#09090b',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
@@ -47,7 +47,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(import.meta.dirname, './src')
     }
   },
   server: {

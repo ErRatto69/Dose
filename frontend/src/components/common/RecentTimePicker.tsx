@@ -17,7 +17,13 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const pad = (n: number) => String(n).padStart(2, '0');
 
-const resolvePast12HourDate = (hour: number, minute: number, refDate: Date = new Date()) => {
+const parseValidDate = (value?: string): Date | null => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const resolvePast12HourDate = (hour: number, minute: number, refDate: Date) => {
     const cToday = new Date(refDate);
     cToday.setHours(hour, minute, 0, 0);
     const cYesterday = new Date(cToday);
@@ -105,64 +111,59 @@ const WheelColumn: React.FC<WheelColumnProps> = ({ items, value, onChange, label
 
     return (
         <div className="flex-1 flex flex-col items-center">
-            {/* Column Header: Label + Desktop Stepper Chevrons */}
             <div className="w-full flex items-center justify-between mb-1.5 px-1">
-                <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+                <span className="text-[11px] font-bold text-zinc-400">
                     {label}
                 </span>
                 <div className="flex items-center gap-1">
                     <button
                         type="button"
                         onClick={() => step(-1)}
-                        className="w-6 h-6 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-white flex items-center justify-center transition-all active:scale-95"
-                        title={`Previous ${label}`}
+                        aria-label={`Previous ${label}`}
+                        className="w-8 h-8 rounded-lg bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-400 hover:text-white flex items-center justify-center dose-press"
                     >
-                        <ChevronUp className="w-3.5 h-3.5" />
+                        <ChevronUp className="w-4 h-4" aria-hidden="true" />
                     </button>
                     <button
                         type="button"
                         onClick={() => step(1)}
-                        className="w-6 h-6 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-white flex items-center justify-center transition-all active:scale-95"
-                        title={`Next ${label}`}
+                        aria-label={`Next ${label}`}
+                        className="w-8 h-8 rounded-lg bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-400 hover:text-white flex items-center justify-center dose-press"
                     >
-                        <ChevronDown className="w-3.5 h-3.5" />
+                        <ChevronDown className="w-4 h-4" aria-hidden="true" />
                     </button>
                 </div>
             </div>
 
-            {/* Roller Box */}
-            <div className="relative w-full overflow-hidden rounded-2xl bg-neutral-950 border border-neutral-800">
-                {/* Center Highlight Selection Bar */}
+            <div className="relative w-full overflow-hidden rounded-2xl bg-[#09090b] border border-white/[0.08]">
                 <div
                     className="absolute left-1.5 right-1.5 pointer-events-none rounded-xl bg-red-600/15 border border-red-500/40"
                     style={{
                         top: ITEM_HEIGHT,
                         height: ITEM_HEIGHT,
                     }}
+                    aria-hidden="true"
                 />
 
-                {/* Top and Bottom Vignette Fades */}
-                <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-neutral-950 via-neutral-950/80 to-transparent pointer-events-none z-10" />
-                <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent pointer-events-none z-10" />
+                <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-[#09090b] via-[#09090b]/80 to-transparent pointer-events-none z-10" aria-hidden="true" />
+                <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-[#09090b] via-[#09090b]/80 to-transparent pointer-events-none z-10" aria-hidden="true" />
 
-                {/* Scroll Container with Strict Cross-Browser Scrollbar Suppression */}
                 <div
                     ref={containerRef}
                     onScroll={handleScroll}
-                    className="overflow-y-auto overflow-x-hidden snap-y snap-mandatory select-none w-full [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                    className="overflow-y-auto overflow-x-hidden overscroll-contain snap-y snap-mandatory no-scrollbar w-full dose-control"
                     style={{
                         height: WHEEL_HEIGHT,
                         paddingTop: ITEM_HEIGHT,
                         paddingBottom: ITEM_HEIGHT,
-                        scrollbarWidth: 'none',
-                        msOverflowStyle: 'none',
                     }}
                 >
                     {items.map((item, index) => {
                         const isSelected = item === value;
                         return (
-                            <div
+                            <button
                                 key={item}
+                                type="button"
                                 onClick={() => {
                                     onChange(item);
                                     containerRef.current?.scrollTo({
@@ -171,14 +172,14 @@ const WheelColumn: React.FC<WheelColumnProps> = ({ items, value, onChange, label
                                     });
                                 }}
                                 style={{ height: ITEM_HEIGHT }}
-                                className={`snap-center flex items-center justify-center cursor-pointer transition-colors duration-150 ${
+                                className={`w-full snap-center flex items-center justify-center tabular-nums transition-colors duration-150 ${
                                     isSelected
-                                        ? 'text-white font-mono font-black text-2xl'
-                                        : 'text-neutral-500 font-mono text-base hover:text-neutral-300'
+                                        ? 'text-white font-extrabold text-2xl'
+                                        : 'text-zinc-500 font-semibold text-base hover:text-zinc-300'
                                 }`}
                             >
                                 {pad(item)}
-                            </div>
+                            </button>
                         );
                     })}
                 </div>
@@ -188,43 +189,44 @@ const WheelColumn: React.FC<WheelColumnProps> = ({ items, value, onChange, label
 };
 
 export const RecentTimePicker: React.FC<RecentTimePickerProps> = ({
-                                                                      value,
-                                                                      onChange,
-                                                                      isNow = true,
-                                                                      onToggleNow,
-                                                                      showNowOption = true,
-                                                                      label = 'Consumption Time',
-                                                                  }) => {
-    const initialDate = useMemo(() => {
-        if (value) {
-            const parsed = new Date(value);
-            if (!isNaN(parsed.getTime())) return parsed;
-        }
-        return new Date();
-    }, [value]);
+    value,
+    onChange,
+    isNow = true,
+    onToggleNow,
+    showNowOption = true,
+    label = 'Consumption Time',
+}) => {
+    const [refDate, setRefDate] = useState<Date>(() => new Date());
+    const [prevValue, setPrevValue] = useState<string | undefined>(value);
+    const [selectedHour, setSelectedHour] = useState<number>(() => {
+        return parseValidDate(value)?.getHours() ?? new Date().getHours();
+    });
+    const [selectedMinute, setSelectedMinute] = useState<number>(() => {
+        return parseValidDate(value)?.getMinutes() ?? new Date().getMinutes();
+    });
 
-    const [selectedHour, setSelectedHour] = useState(initialDate.getHours());
-    const [selectedMinute, setSelectedMinute] = useState(initialDate.getMinutes());
-
-    useEffect(() => {
-        if (value && !isNow) {
-            const parsed = new Date(value);
-            if (!isNaN(parsed.getTime())) {
+    if (value !== prevValue) {
+        setPrevValue(value);
+        if (!isNow) {
+            const parsed = parseValidDate(value);
+            if (parsed) {
                 setSelectedHour(parsed.getHours());
                 setSelectedMinute(parsed.getMinutes());
             }
         }
-    }, [value, isNow]);
+    }
 
     const timeStatus = useMemo(() => {
-        return resolvePast12HourDate(selectedHour, selectedMinute, new Date());
-    }, [selectedHour, selectedMinute]);
+        return resolvePast12HourDate(selectedHour, selectedMinute, refDate);
+    }, [selectedHour, selectedMinute, refDate]);
 
     const handleTimeChange = useCallback(
         (hour: number, minute: number) => {
+            const now = new Date();
+            setRefDate(now);
             setSelectedHour(hour);
             setSelectedMinute(minute);
-            const result = resolvePast12HourDate(hour, minute, new Date());
+            const result = resolvePast12HourDate(hour, minute, now);
             if (result.isValid) {
                 onChange(result.date.toISOString());
             }
@@ -240,78 +242,78 @@ export const RecentTimePicker: React.FC<RecentTimePickerProps> = ({
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-red-500" />
+                <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-red-400" aria-hidden="true" />
                     {label}
                 </span>
-                <span className="text-[10px] text-neutral-500 font-mono">Past 12h window</span>
+                <span className="text-[11px] text-zinc-400 tabular-nums">12h window</span>
             </div>
 
-            {/* Now vs Custom Time Toggle */}
             {showNowOption && (
-                <div className="grid grid-cols-2 gap-1.5 p-1 bg-neutral-950 border border-neutral-800 rounded-xl">
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#0c0c0f] border border-white/[0.08] rounded-xl">
                     <button
                         type="button"
                         onClick={() => onToggleNow?.(true)}
-                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        className={`min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 dose-press ${
                             isNow
-                                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                                : 'text-neutral-400 hover:text-neutral-200'
+                                ? 'bg-red-600 text-white'
+                                : 'text-zinc-400 hover:text-zinc-200'
                         }`}
                     >
-                        {isNow && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                        <span>Now (Default)</span>
+                        {isNow && <Check className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />}
+                        <span>Now</span>
                     </button>
                     <button
                         type="button"
                         onClick={() => {
+                            const now = new Date();
+                            setRefDate(now);
                             onToggleNow?.(false);
-                            if (timeStatus.isValid) {
-                                onChange(timeStatus.date.toISOString());
+                            const nextStatus = resolvePast12HourDate(selectedHour, selectedMinute, now);
+                            if (nextStatus.isValid) {
+                                onChange(nextStatus.date.toISOString());
                             }
                         }}
-                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        className={`min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 dose-press ${
                             !isNow
-                                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                                : 'text-neutral-400 hover:text-neutral-200'
+                                ? 'bg-red-600 text-white'
+                                : 'text-zinc-400 hover:text-zinc-200'
                         }`}
                     >
-                        {!isNow && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        {!isNow && <Check className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />}
                         <span>Custom Time</span>
                     </button>
                 </div>
             )}
 
-            {/* Roller Wheels Area */}
             {(!showNowOption || !isNow) && (
-                <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                <div className="p-4 rounded-2xl bg-[#0c0c0f] border border-white/[0.08] space-y-3 dose-dialog-enter">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs text-neutral-400">Set hour and minute:</span>
+                        <span className="text-xs text-zinc-400">Adjust hour and minute</span>
                         <button
                             type="button"
                             onClick={handleSetToCurrentTime}
-                            className="text-[11px] font-bold text-red-500 hover:text-red-400 flex items-center gap-1 transition-colors"
-                            title="Reset to current time"
+                            className="min-h-[32px] px-2 rounded-lg text-[11px] font-bold text-red-400 hover:text-red-300 flex items-center gap-1 dose-press"
                         >
-                            <RotateCcw className="w-3 h-3" />
-                            <span>Current time</span>
+                            <RotateCcw className="w-3 h-3" aria-hidden="true" />
+                            <span>Reset to now</span>
                         </button>
                     </div>
 
-                    {/* Columns + Colon Aligned at the Selection Line */}
                     <div className="flex items-end gap-3">
                         <WheelColumn
                             items={HOURS}
                             value={selectedHour}
                             onChange={(h) => handleTimeChange(h, selectedMinute)}
-                            label="Hours"
+                            label="Hour"
                         />
                         <div
-                            className="flex items-center justify-center font-mono font-black text-2xl text-red-500 select-none pb-0.5"
+                            className="flex items-center justify-center font-extrabold text-2xl text-red-400 tabular-nums select-none pb-0.5"
                             style={{
                                 height: ITEM_HEIGHT,
                                 marginBottom: ITEM_HEIGHT,
                             }}
+                            aria-hidden="true"
                         >
                             :
                         </div>
@@ -319,22 +321,21 @@ export const RecentTimePicker: React.FC<RecentTimePickerProps> = ({
                             items={MINUTES}
                             value={selectedMinute}
                             onChange={(m) => handleTimeChange(selectedHour, m)}
-                            label="Minutes"
+                            label="Minute"
                         />
                     </div>
 
-                    {/* Auto-resolved Date/Time Feedback */}
                     {timeStatus.isValid ? (
-                        <div className="flex items-center justify-between text-xs px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800">
-                            <span className="text-neutral-400">Recorded for:</span>
-                            <span className="font-semibold text-neutral-100 flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                        <div className="flex items-center justify-between text-xs px-3 py-2 rounded-xl bg-[#111114] border border-white/[0.08]">
+                            <span className="text-zinc-400">Logged at</span>
+                            <span className="font-semibold text-zinc-100 tabular-nums flex items-center gap-1.5">
+                                <Check className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
                                 {timeStatus.label}
                             </span>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-1.5 text-xs text-red-400 px-3 py-2 rounded-xl bg-red-950/40 border border-red-800/50">
-                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <div className="flex items-center gap-1.5 text-xs text-red-300 px-3 py-2 rounded-xl bg-red-950/50 border border-red-700/50">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400" aria-hidden="true" />
                             <span>{timeStatus.label}</span>
                         </div>
                     )}

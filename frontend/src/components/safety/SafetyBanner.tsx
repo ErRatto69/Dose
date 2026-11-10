@@ -1,6 +1,7 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import type { BacSafetyLevel } from '@/types';
-import { AlertTriangle, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, ArrowRight } from 'lucide-react';
 
 interface SafetyBannerProps {
     bacGramsPerLiter: number;
@@ -30,24 +31,42 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({ bacGramsPerLiter, sa
 
     return (
         <aside
-            className={`sticky top-16 z-30 px-4 py-2.5 flex items-center justify-center shadow-lg border-b text-xs font-medium ${
+            role="status"
+            aria-live="polite"
+            aria-label="Blood alcohol safety alert"
+            className={`sticky top-16 z-30 px-4 py-2.5 border-b text-xs font-medium ${
                 isCritical
-                    ? 'bg-rose-950/95 border-rose-800 text-rose-200'
-                    : 'bg-amber-950/95 border-amber-800 text-amber-200'
+                    ? 'bg-red-950/95 border-red-700/70 text-red-100'
+                    : 'bg-amber-950/95 border-amber-700/60 text-amber-100'
             }`}
-            aria-label="Safety Alert"
         >
-            <div className="max-w-7xl w-full flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+            <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
                     {isCritical ? (
-                        <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                        <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" aria-hidden="true" />
                     ) : (
-                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" aria-hidden="true" />
                     )}
-                    <span>
-                        BAC at <strong className="font-bold">{bacGramsPerLiter.toFixed(2)} g/L</strong>. Do NOT drive. Drink water and assign a designated driver.
+                    <span className="leading-snug">
+                        BAC at{' '}
+                        <strong className="font-extrabold tabular-nums">
+                            {bacGramsPerLiter.toFixed(2)} g/L
+                        </strong>
+                        . Do not drive — hydrate and assign a designated driver.
                     </span>
                 </div>
+
+                <Link
+                    to="/bac"
+                    className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border dose-press ${
+                        isCritical
+                            ? 'bg-red-900/60 border-red-500/40 text-red-100 hover:bg-red-900'
+                            : 'bg-amber-900/50 border-amber-500/40 text-amber-100 hover:bg-amber-900'
+                    }`}
+                >
+                    <span>Telemetry</span>
+                    <ArrowRight className="w-3 h-3" aria-hidden="true" />
+                </Link>
             </div>
         </aside>
     );

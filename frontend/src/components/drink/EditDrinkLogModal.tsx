@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { bacApi } from '@/api/bac.api';
 import { queryKeys } from '@/api/queryKeys';
+import { usePreferencesStore } from '@/store/usePreferencesStore';
+import { formatVolume } from '@/utils/units';
 import { RecentTimePicker } from '@/components/common/RecentTimePicker';
+import { ModalShell } from '@/components/common/ModalShell';
 import type { DrinkEvent, CustomIngredientDose, StomachState } from '@/types';
-import { X, Plus, Minus, Check, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Minus, Check, Loader2, AlertCircle } from 'lucide-react';
 
 interface EditDrinkLogModalProps {
     event: DrinkEvent | null;
@@ -12,39 +15,35 @@ interface EditDrinkLogModalProps {
     onClose: () => void;
 }
 
-export const EditDrinkLogModal: React.FC<EditDrinkLogModalProps> = ({ event, isOpen, onClose }) => {
+interface EditDrinkLogFormProps {
+    event: DrinkEvent;
+    onClose: () => void;
+    onSubmittingChange: (submitting: boolean) => void;
+}
+
+const EditDrinkLogForm: React.FC<EditDrinkLogFormProps> = ({
+    event,
+    onClose,
+    onSubmittingChange,
+}) => {
     const queryClient = useQueryClient();
-    const [doses, setDoses] = useState<Array<{ ingredientId: string; name: string; amountCl: number }>>([]);
-    const [consumedAt, setConsumedAt] = useState('');
-    const [notes, setNotes] = useState('');
-    const [customName, setCustomName] = useState('');
-    const [stomachState, setStomachState] = useState<StomachState>('LightSnack');
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { preferredUnit } = usePreferencesStore();
+    const [doses, setDoses] = useState<Array<{ ingredientId: string; name: string; amountCl: number }>>(() =>
+        event.components
+            ? event.components
+                  .filter((c) => c.ingredientId)
+                  .map((c) => ({
+                      ingredientId: c.ingredientId!,
+                      name: c.name,
+                      amountCl: c.amountCl,
+                  }))
+            : []
+    );
+    const [consumedAt, setConsumedAt] = useState<string>(event.consumedAt);
+    const [notes, setNotes] = useState<string>(event.notes || '');
+    const [customName, setCustomName] = useState<string>(event.drinkName);
+    const [stomachState, setStomachState] = useState<StomachState>(event.stomachState || 'LightSnack');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (event) {
-            setCustomName(event.drinkName);
-            setNotes(event.notes || '');
-            setConsumedAt(event.consumedAt);
-            setStomachState(event.stomachState || 'LightSnack');
-            if (event.components && event.components.length > 0) {
-                setDoses(
-                    event.components
-                        .filter((c) => c.ingredientId)
-                        .map((c) => ({
-                            ingredientId: c.ingredientId!,
-                            name: c.name,
-                            amountCl: c.amountCl,
-                        }))
-                );
-            } else {
-                setDoses([]);
-            }
-        }
-    }, [event]);
-
-    if (!isOpen || !event) return null;
 
     const updateAmount = (ingId: string, delta: number) => {
         setDoses((prev) =>
@@ -78,7 +77,7 @@ export const EditDrinkLogModal: React.FC<EditDrinkLogModalProps> = ({ event, isO
             }));
 
         try {
-            setIsSubmitting(true);
+            onSubmittingChange(true);
             await bacApi.updateDrinkLog(event.logId, {
                 customName: customName.trim() || undefined,
                 consumedAt: targetDate.toISOString(),
@@ -98,174 +97,181 @@ export const EditDrinkLogModal: React.FC<EditDrinkLogModalProps> = ({ event, isO
                 setErrorMsg('Network error updating log.');
             }
         } finally {
-            setIsSubmitting(false);
+            onSubmittingChange(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-neutral-950/80 backdrop-blur-md">
-            <div
-                className="w-full max-w-lg bg-neutral-900 border border-neutral-800 rounded-t-3xl sm:rounded-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-                role="dialog"
-                aria-modal="true"
-            >
-                {/* Pinned Sticky Header */}
-                <div className="p-4 sm:p-5 border-b border-neutral-800 flex items-center justify-between bg-neutral-900 shrink-0">
-                    <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-500">
-                            Log Entry
-                        </span>
-                        <h2 className="text-xl font-black text-white leading-tight">Edit Drink Log</h2>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="p-2 rounded-full bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
-                        aria-label="Close modal"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
-
-                {/* Scrollable Form Body */}
-                <form
-                    id="edit-drink-log-form"
-                    onSubmit={handleSave}
-                    className="p-5 overflow-y-auto space-y-4 flex-1"
+        <form
+            id="edit-drink-log-form"
+            onSubmit={handleSave}
+            className="space-y-4"
+        >
+            {errorMsg && (
+                <div
+                    role="alert"
+                    className="p-3 rounded-xl bg-red-950/60 border border-red-700/60 text-red-200 text-xs flex items-center gap-2"
                 >
-                    {errorMsg && (
-                        <div className="p-3 rounded-xl bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                            <span>{errorMsg}</span>
-                        </div>
-                    )}
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400" aria-hidden="true" />
+                    <span>{errorMsg}</span>
+                </div>
+            )}
 
-                    <div>
-                        <label className="text-xs font-semibold text-neutral-300 block mb-1">
-                            Drink Label
-                        </label>
-                        <input
-                            type="text"
-                            required
-                            value={customName}
-                            onChange={(e) => setCustomName(e.target.value)}
-                            className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white focus:outline-none focus:border-red-600"
-                        />
-                    </div>
+            <div>
+                <label htmlFor="edit-drink-label" className="text-xs font-bold text-zinc-200 block mb-1.5">
+                    Drink Label
+                </label>
+                <input
+                    id="edit-drink-label"
+                    type="text"
+                    required
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl text-xs dose-input"
+                />
+            </div>
 
-                    {/* Stomach Condition */}
-                    <div>
-                        <label className="text-xs font-semibold text-neutral-300 block mb-1.5">
-                            Stomach Condition
-                        </label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {(
-                                [
-                                    { value: 'Empty', label: 'Empty' },
-                                    { value: 'LightSnack', label: 'Snack' },
-                                    { value: 'FullMeal', label: 'Full Meal' },
-                                ] as const
-                            ).map((item) => (
-                                <button
-                                    key={item.value}
-                                    type="button"
-                                    onClick={() => setStomachState(item.value)}
-                                    className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                                        stomachState === item.value
-                                            ? 'bg-red-600 text-white border-red-500 shadow-sm shadow-red-600/30'
-                                            : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-                                    }`}
-                                >
-                                    {item.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <RecentTimePicker
-                        value={consumedAt}
-                        onChange={(isoStr) => setConsumedAt(isoStr)}
-                        showNowOption={false}
-                        label="Time Consumed"
-                    />
-
-                    {doses.length > 0 && (
-                        <div className="space-y-2">
-                            <label className="text-xs font-semibold text-neutral-300 block">
-                                Ingredient Doses
-                            </label>
-                            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-                                {doses.map((d) => (
-                                    <div
-                                        key={d.ingredientId}
-                                        className="p-2.5 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-between text-xs"
-                                    >
-                                        <span className="font-semibold text-neutral-200 truncate pr-2">
-                                            {d.name}
-                                        </span>
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                            <button
-                                                type="button"
-                                                onClick={() => updateAmount(d.ingredientId, -0.5)}
-                                                className="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-300 hover:text-white"
-                                            >
-                                                <Minus className="w-3 h-3" />
-                                            </button>
-                                            <span className="w-14 text-center font-mono font-bold text-red-400">
-                                                {d.amountCl} cl
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => updateAmount(d.ingredientId, 0.5)}
-                                                className="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-300 hover:text-white"
-                                            >
-                                                <Plus className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    <div>
-                        <label className="text-xs font-semibold text-neutral-300 block mb-1">
-                            Notes (optional)
-                        </label>
-                        <input
-                            type="text"
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Add notes..."
-                            className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white focus:outline-none focus:border-red-600"
-                        />
-                    </div>
-                </form>
-
-                {/* Pinned Sticky Footer Actions */}
-                <div className="p-4 sm:p-5 bg-neutral-900 border-t border-neutral-800 flex items-center justify-end gap-2.5 shrink-0">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-bold transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        form="edit-drink-log-form"
-                        disabled={isSubmitting}
-                        className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-red-600/25 transition-all active:scale-95"
-                    >
-                        {isSubmitting ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                        )}
-                        <span>Save Changes</span>
-                    </button>
+            <div>
+                <span className="text-xs font-bold text-zinc-200 block mb-1.5">
+                    Stomach Condition
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                    {(
+                        [
+                            { value: 'Empty', label: 'Empty' },
+                            { value: 'LightSnack', label: 'Snack' },
+                            { value: 'FullMeal', label: 'Full Meal' },
+                        ] as const
+                    ).map((item) => (
+                        <button
+                            key={item.value}
+                            type="button"
+                            aria-pressed={stomachState === item.value}
+                            onClick={() => setStomachState(item.value)}
+                            className={`min-h-[40px] py-2 rounded-xl text-xs font-bold border dose-press ${
+                                stomachState === item.value
+                                    ? 'bg-red-600 text-white border-red-500/70'
+                                    : 'bg-[#0c0c0f] border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                            }`}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
                 </div>
             </div>
+
+            <RecentTimePicker
+                value={consumedAt}
+                onChange={(isoStr) => setConsumedAt(isoStr)}
+                showNowOption={false}
+                label="Time Consumed"
+            />
+
+            {doses.length > 0 && (
+                <div className="space-y-2">
+                    <span className="text-xs font-bold text-zinc-200 block">
+                        Ingredient Doses
+                    </span>
+                    <div className="space-y-1.5 max-h-44 overflow-y-auto overscroll-contain pr-1">
+                        {doses.map((d) => (
+                            <div
+                                key={d.ingredientId}
+                                className="p-2.5 rounded-xl bg-[#0c0c0f] border border-white/[0.08] flex items-center justify-between text-xs"
+                            >
+                                <span className="font-semibold text-zinc-100 truncate pr-2">
+                                    {d.name}
+                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => updateAmount(d.ingredientId, -0.5)}
+                                        aria-label={`Decrease ${d.name}`}
+                                        className="w-8 h-8 rounded-lg bg-[#111114] border border-white/[0.08] flex items-center justify-center text-zinc-200 dose-press"
+                                    >
+                                        <Minus className="w-3.5 h-3.5" aria-hidden="true" />
+                                    </button>
+                                    <span className="w-16 text-center tabular-nums font-extrabold text-red-400">
+                                        {formatVolume(d.amountCl, preferredUnit) || '0'}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => updateAmount(d.ingredientId, 0.5)}
+                                        aria-label={`Increase ${d.name}`}
+                                        className="w-8 h-8 rounded-lg bg-[#111114] border border-white/[0.08] flex items-center justify-center text-zinc-200 dose-press"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <div>
+                <label htmlFor="edit-drink-notes" className="text-xs font-bold text-zinc-200 block mb-1.5">
+                    Notes (optional)
+                </label>
+                <input
+                    id="edit-drink-notes"
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Add notes…"
+                    className="w-full min-h-[42px] px-3.5 py-2 rounded-xl text-xs dose-input"
+                />
+            </div>
+        </form>
+    );
+};
+
+export const EditDrinkLogModal: React.FC<EditDrinkLogModalProps> = ({ event, isOpen, onClose }) => {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    if (!event) return null;
+
+    const footer = (
+        <div className="flex items-center justify-end gap-2">
+            <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="min-h-[42px] px-4 py-2 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] text-zinc-300 text-xs font-bold dose-press"
+            >
+                Cancel
+            </button>
+            <button
+                type="submit"
+                form="edit-drink-log-form"
+                disabled={isSubmitting}
+                className="min-h-[42px] px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-extrabold flex items-center gap-1.5 border border-red-500/50 dose-press"
+            >
+                {isSubmitting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                    <Check className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />
+                )}
+                <span>Save Changes</span>
+            </button>
         </div>
+    );
+
+    return (
+        <ModalShell
+            isOpen={isOpen}
+            onClose={onClose}
+            title="Edit Drink Log"
+            badge={<span className="text-xs font-bold text-red-400">12-Hour Log Entry</span>}
+            maxWidthClass="max-w-lg"
+            footer={footer}
+            closeDisabled={isSubmitting}
+        >
+            <EditDrinkLogForm
+                key={event.logId}
+                event={event}
+                onClose={onClose}
+                onSubmittingChange={setIsSubmitting}
+            />
+        </ModalShell>
     );
 };

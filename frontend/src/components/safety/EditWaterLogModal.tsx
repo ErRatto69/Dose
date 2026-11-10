@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { bacApi } from '@/api/bac.api';
 import { queryKeys } from '@/api/queryKeys';
 import { RecentTimePicker } from '@/components/common/RecentTimePicker';
+import { ModalShell } from '@/components/common/ModalShell';
 import type { WaterEvent } from '@/types';
-import { X, Droplets, Check, Loader2, Plus, Minus, AlertCircle } from 'lucide-react';
+import { Droplets, Check, Loader2, Plus, Minus, AlertCircle } from 'lucide-react';
 
 interface EditWaterLogModalProps {
     event: WaterEvent | null;
@@ -13,30 +14,30 @@ interface EditWaterLogModalProps {
 }
 
 const WATER_PRESETS = [
-    { label: 'Small Glass', cl: 20 },
-    { label: 'Standard Glass', cl: 25 },
-    { label: 'Can', cl: 33 },
-    { label: 'Half Liter', cl: 50 },
-    { label: 'Bottle (75cl)', cl: 75 },
-    { label: '1 Liter', cl: 100 },
+    { cl: 20 },
+    { cl: 25 },
+    { cl: 33 },
+    { cl: 50 },
+    { cl: 75 },
+    { cl: 100 },
 ];
 
-export const EditWaterLogModal: React.FC<EditWaterLogModalProps> = ({ event, isOpen, onClose }) => {
+interface EditWaterLogFormProps {
+    event: WaterEvent;
+    onClose: () => void;
+    onSubmittingChange: (submitting: boolean) => void;
+    isSubmitting: boolean;
+}
+
+const EditWaterLogForm: React.FC<EditWaterLogFormProps> = ({
+    event,
+    onClose,
+    onSubmittingChange,
+}) => {
     const queryClient = useQueryClient();
-    const [amountCl, setAmountCl] = useState<number>(25);
-    const [consumedAt, setConsumedAt] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [amountCl, setAmountCl] = useState<number>(event.amountCl);
+    const [consumedAt, setConsumedAt] = useState<string>(event.consumedAt);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (event) {
-            setAmountCl(event.amountCl);
-            setConsumedAt(event.consumedAt);
-            setErrorMsg(null);
-        }
-    }, [event]);
-
-    if (!isOpen || !event) return null;
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -54,7 +55,7 @@ export const EditWaterLogModal: React.FC<EditWaterLogModalProps> = ({ event, isO
         }
 
         try {
-            setIsSubmitting(true);
+            onSubmittingChange(true);
             await bacApi.updateWaterLog(event.id, amountCl, targetDate.toISOString());
             queryClient.invalidateQueries({ queryKey: queryKeys.bac.me() });
             queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard.monthly() });
@@ -68,117 +69,134 @@ export const EditWaterLogModal: React.FC<EditWaterLogModalProps> = ({ event, isO
                 setErrorMsg('Network error updating log.');
             }
         } finally {
-            setIsSubmitting(false);
+            onSubmittingChange(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-md">
-            <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-sky-950/70 border border-sky-600/40 flex items-center justify-center text-sky-400">
-                            <Droplets className="w-4 h-4 fill-sky-400" />
-                        </div>
-                        <h2 className="text-base font-black text-white">Edit Water Log</h2>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="p-1.5 rounded-full bg-neutral-800 text-neutral-400 hover:text-white"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
+        <form id="edit-water-log-form" onSubmit={handleSave} className="space-y-4">
+            {errorMsg && (
+                <div
+                    role="alert"
+                    className="p-3 rounded-xl bg-red-950/60 border border-red-700/60 text-red-200 text-xs flex items-center gap-2"
+                >
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400" aria-hidden="true" />
+                    <span>{errorMsg}</span>
+                </div>
+            )}
+
+            <div className="p-4 rounded-2xl bg-[#0c0c0f] border border-white/[0.08] flex items-center justify-between">
+                <div>
+                    <span className="text-[11px] text-zinc-400 block">Water Volume</span>
+                    <strong className="text-xl font-extrabold tabular-nums text-sky-400">
+                        {amountCl} cl
+                    </strong>
+                    <span className="text-[11px] text-zinc-400 block tabular-nums">
+                        {amountCl * 10} ml
+                    </span>
                 </div>
 
-                {errorMsg && (
-                    <div className="p-3 rounded-xl bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                        <span>{errorMsg}</span>
-                    </div>
-                )}
-
-                <form onSubmit={handleSave} className="space-y-4">
-                    {/* Amount Adjuster */}
-                    <div className="p-3.5 rounded-2xl bg-neutral-950 border border-neutral-800 flex items-center justify-between">
-                        <div>
-                            <span className="text-[11px] text-neutral-400 block">Water Volume</span>
-                            <strong className="text-xl font-black font-mono text-sky-400">
-                                {amountCl} cl
-                            </strong>
-                            <span className="text-[10px] text-neutral-500 block">
-                                ({amountCl * 10} ml)
-                            </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                type="button"
-                                onClick={() => setAmountCl((prev) => Math.max(5, prev - 5))}
-                                className="w-8 h-8 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 flex items-center justify-center transition-all active:scale-95"
-                            >
-                                <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setAmountCl((prev) => Math.min(200, prev + 5))}
-                                className="w-8 h-8 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 flex items-center justify-center transition-all active:scale-95"
-                            >
-                                <Plus className="w-3.5 h-3.5" />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Presets */}
-                    <div className="grid grid-cols-3 gap-1.5">
-                        {WATER_PRESETS.map((p) => (
-                            <button
-                                key={p.cl}
-                                type="button"
-                                onClick={() => setAmountCl(p.cl)}
-                                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all ${
-                                    amountCl === p.cl
-                                        ? 'bg-sky-950/60 border-sky-500 text-white'
-                                        : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-                                }`}
-                            >
-                                {p.cl} cl
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Time Picker */}
-                    <RecentTimePicker
-                        value={consumedAt}
-                        onChange={(isoStr) => setConsumedAt(isoStr)}
-                        showNowOption={false}
-                        label="Time Consumed"
-                    />
-
-                    <div className="flex justify-end gap-2 pt-2 border-t border-neutral-800">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-2 rounded-xl bg-neutral-800 text-neutral-300 text-xs font-bold hover:bg-neutral-700"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSubmitting || amountCl <= 0}
-                            className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-sky-600/30 transition-all active:scale-95"
-                        >
-                            {isSubmitting ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                                <Check className="w-3.5 h-3.5 stroke-[3]" />
-                            )}
-                            Save Changes
-                        </button>
-                    </div>
-                </form>
+                <div className="flex items-center gap-1.5">
+                    <button
+                        type="button"
+                        onClick={() => setAmountCl((prev) => Math.max(5, prev - 5))}
+                        aria-label="Decrease water by 5 cl"
+                        className="w-9 h-9 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-200 flex items-center justify-center dose-press"
+                    >
+                        <Minus className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setAmountCl((prev) => Math.min(200, prev + 5))}
+                        aria-label="Increase water by 5 cl"
+                        className="w-9 h-9 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-200 flex items-center justify-center dose-press"
+                    >
+                        <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                </div>
             </div>
+
+            <div className="grid grid-cols-3 gap-1.5">
+                {WATER_PRESETS.map((p) => (
+                    <button
+                        key={p.cl}
+                        type="button"
+                        aria-pressed={amountCl === p.cl}
+                        onClick={() => setAmountCl(p.cl)}
+                        className={`min-h-[38px] py-1.5 px-2 rounded-xl text-xs font-bold border tabular-nums dose-press ${
+                            amountCl === p.cl
+                                ? 'bg-sky-950/60 border-sky-500 text-white'
+                                : 'bg-[#0c0c0f] border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                        }`}
+                    >
+                        {p.cl} cl
+                    </button>
+                ))}
+            </div>
+
+            <RecentTimePicker
+                value={consumedAt}
+                onChange={(isoStr) => setConsumedAt(isoStr)}
+                showNowOption={false}
+                label="Time Consumed"
+            />
+        </form>
+    );
+};
+
+export const EditWaterLogModal: React.FC<EditWaterLogModalProps> = ({ event, isOpen, onClose }) => {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    if (!event) return null;
+
+    const footer = (
+        <div className="flex justify-end gap-2">
+            <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="min-h-[42px] px-4 py-2 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] text-zinc-300 text-xs font-bold dose-press"
+            >
+                Cancel
+            </button>
+            <button
+                type="submit"
+                form="edit-water-log-form"
+                disabled={isSubmitting}
+                className="min-h-[42px] px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-extrabold flex items-center gap-1.5 border border-sky-400/40 dose-press"
+            >
+                {isSubmitting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                    <Check className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />
+                )}
+                <span>Save Changes</span>
+            </button>
         </div>
+    );
+
+    return (
+        <ModalShell
+            isOpen={isOpen}
+            onClose={onClose}
+            title="Edit Water Log"
+            badge={
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-400">
+                    <Droplets className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Hydration Entry</span>
+                </span>
+            }
+            maxWidthClass="max-w-sm"
+            footer={footer}
+            closeDisabled={isSubmitting}
+        >
+            <EditWaterLogForm
+                key={event.id}
+                event={event}
+                onClose={onClose}
+                isSubmitting={isSubmitting}
+                onSubmittingChange={setIsSubmitting}
+            />
+        </ModalShell>
     );
 };

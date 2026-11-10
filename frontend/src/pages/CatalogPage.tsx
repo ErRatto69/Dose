@@ -18,8 +18,9 @@ import {
     Wine,
     Loader2,
     RefreshCw,
+    AlertCircle,
 } from 'lucide-react';
-import {canManageCocktails, isAdmin} from "@/utils/auth";
+import { canManageCocktails, isAdmin } from '@/utils/auth';
 
 const BASE_SPIRITS = [
     { label: 'All', query: '' },
@@ -41,6 +42,7 @@ export const CatalogPage: React.FC = () => {
     const [loadingAction, setLoadingAction] = useState<{ id: string; mode: 'view' | 'drink' } | null>(
         null
     );
+    const [actionError, setActionError] = useState<string | null>(null);
     const [viewedDrink, setViewedDrink] = useState<DrinkDetail | null>(null);
 
     // Create / Edit / Duplicate state
@@ -80,6 +82,7 @@ export const CatalogPage: React.FC = () => {
     const {
         data: pagedDrinksData,
         isLoading,
+        isError,
         isFetchingNextPage,
         hasNextPage,
         fetchNextPage,
@@ -100,7 +103,7 @@ export const CatalogPage: React.FC = () => {
     const drinks = pagedDrinksData?.pages.flatMap((page) => page.items) ?? [];
     const totalCount = pagedDrinksData?.pages[0]?.totalCount ?? drinks.length;
 
-    // IntersectionObserver for TikTok-style infinite scroll
+    // IntersectionObserver for infinite scroll
     useEffect(() => {
         const sentinel = loadMoreRef.current;
         if (!sentinel) return;
@@ -121,6 +124,7 @@ export const CatalogPage: React.FC = () => {
 
     const handleAction = async (drinkId: string, mode: 'view' | 'drink') => {
         try {
+            setActionError(null);
             setLoadingAction({ id: drinkId, mode });
             const detail = await drinksApi.getById(drinkId);
             if (mode === 'view') {
@@ -130,6 +134,7 @@ export const CatalogPage: React.FC = () => {
             }
         } catch (err) {
             console.error('Failed to load drink detail:', err);
+            setActionError('Unable to load cocktail details. Please try again.');
         } finally {
             setLoadingAction(null);
         }
@@ -155,95 +160,169 @@ export const CatalogPage: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Header Control Panel */}
-            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xl">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* Page Header & Search Controls */}
+            <section className="space-y-4">
+                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl sm:text-3xl font-black text-white">Cocktail Catalog</h1>
-                        <p className="text-xs text-neutral-400 mt-1">
-                            Curated cocktail recipes, ABV calculations, and custom pouring.
+                        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-balance">
+                            Cocktail Catalog
+                        </h1>
+                        <p className="text-xs sm:text-sm text-zinc-400 mt-1">
+                            Browse recipes, inspect ABV ratios, and customize pours directly to your BAC tracker.
                         </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        {/* Admin Sync Button */}
-                        {hasAdminAccess && (
-                            <button
-                                type="button"
-                                onClick={() => setIsSyncModalOpen(true)}
-                                className={`px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all ${
-                                    syncStatus?.isRunning
-                                        ? 'bg-red-600/20 border-red-600 text-red-300'
-                                        : 'bg-neutral-950 hover:bg-neutral-800 border-neutral-800 text-neutral-200'
-                                }`}
-                                title="Harvest cocktails from TheCocktailDB"
-                            >
-                                <RefreshCw className={`w-3.5 h-3.5 ${syncStatus?.isRunning ? 'animate-spin text-red-500' : 'text-neutral-400'}`} />
-                                <span>{syncStatus?.isRunning ? 'Syncing...' : 'Sync TheCocktailDB'}</span>
-                            </button>
-                        )}
+                    {(hasAdminAccess || canManageCatalog) && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            {hasAdminAccess && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsSyncModalOpen(true)}
+                                    className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border dose-press ${
+                                        syncStatus?.isRunning
+                                            ? 'bg-red-600/20 border-red-500/60 text-red-200'
+                                            : 'bg-[#111114] hover:bg-[#18181d] border-white/[0.08] text-zinc-200'
+                                    }`}
+                                >
+                                    <RefreshCw
+                                        className={`w-3.5 h-3.5 ${
+                                            syncStatus?.isRunning ? 'animate-spin text-red-400' : 'text-zinc-400'
+                                        }`}
+                                        aria-hidden="true"
+                                    />
+                                    <span>{syncStatus?.isRunning ? 'Syncing…' : 'Sync TheCocktailDB'}</span>
+                                </button>
+                            )}
 
-                        {canManageCatalog && (
-                            <>
+                            {canManageCatalog && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenCreateNew}
+                                        className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-100 font-bold text-xs flex items-center gap-1.5 dose-press"
+                                    >
+                                        <Plus className="w-4 h-4 text-red-400" aria-hidden="true" />
+                                        <span>New Drink</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCreateIngredientOpen(true)}
+                                        className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#111114] hover:bg-[#18181d] border border-white/[0.08] text-zinc-100 font-bold text-xs flex items-center gap-1.5 dose-press"
+                                    >
+                                        <Wine className="w-4 h-4 text-red-400" aria-hidden="true" />
+                                        <span>New Ingredient</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Search + Spirit Filter Strip */}
+                <div className="p-4 rounded-2xl bg-[#111114] border border-white/[0.08] space-y-3">
+                    <GlobalSearch
+                        value={searchQuery}
+                        onChange={(v) => {
+                            setSearchQuery(v);
+                            if (v) setSelectedSpirit('');
+                        }}
+                    />
+
+                    <div
+                        className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5"
+                        role="group"
+                        aria-label="Filter by base spirit"
+                    >
+                        {BASE_SPIRITS.map((tab) => {
+                            const isSelected = selectedSpirit === tab.query && !searchQuery;
+                            return (
                                 <button
+                                    key={tab.label}
                                     type="button"
-                                    onClick={handleOpenCreateNew}
-                                    className="px-3.5 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
+                                    aria-pressed={isSelected}
+                                    onClick={() => {
+                                        setSearchQuery('');
+                                        setSelectedSpirit(tab.query);
+                                    }}
+                                    className={`min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 border dose-press ${
+                                        isSelected
+                                            ? 'bg-red-600 text-white border-red-500/60'
+                                            : 'bg-[#0c0c0f] text-zinc-400 hover:text-zinc-100 border-white/[0.08]'
+                                    }`}
                                 >
-                                    <Plus className="w-4 h-4 text-red-500" />
-                                    <span>New Drink</span>
+                                    {tab.label}
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsCreateIngredientOpen(true)}
-                                    className="px-3.5 py-2.5 rounded-xl bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-100 font-bold text-xs flex items-center gap-1.5 transition-colors"
-                                >
-                                    <Wine className="w-4 h-4 text-red-500" />
-                                    <span>New Ingredient</span>
-                                </button>
-                            </>
-                        )}
+                            );
+                        })}
                     </div>
                 </div>
+            </section>
 
-                {/* Instant Search Bar */}
-                <GlobalSearch value={searchQuery} onChange={(v) => { setSearchQuery(v); if (v) setSelectedSpirit(''); }} />
-
-                {/* Quick Spirit Tabs */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar">
-                    {BASE_SPIRITS.map((tab) => {
-                        const isSelected = selectedSpirit === tab.query && !searchQuery;
-                        return (
-                            <button
-                                key={tab.label}
-                                type="button"
-                                onClick={() => {
-                                    setSearchQuery('');
-                                    setSelectedSpirit(tab.query);
-                                }}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all ${
-                                    isSelected
-                                        ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                                        : 'bg-neutral-950 text-neutral-400 hover:text-neutral-200 border border-neutral-800'
-                                }`}
-                            >
-                                {tab.label}
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Initial Loading State */}
-            {isLoading && (
-                <div className="py-24 flex flex-col items-center justify-center text-neutral-500 gap-2">
-                    <Loader2 className="w-8 h-8 animate-spin text-red-600" />
-                    <span className="text-xs">Loading craft catalog...</span>
+            {actionError && (
+                <div
+                    role="alert"
+                    className="p-3.5 rounded-2xl bg-red-950/60 border border-red-700/60 text-xs text-red-200 flex items-center justify-between gap-3"
+                >
+                    <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" aria-hidden="true" />
+                        <span>{actionError}</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setActionError(null)}
+                        className="text-xs font-bold text-red-300 hover:text-white"
+                    >
+                        Dismiss
+                    </button>
                 </div>
             )}
 
-            {/* Dark Editorial Cocktail Grid */}
-            {!isLoading && (
+            {/* Skeleton Loading Grid */}
+            {isLoading && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5" aria-busy="true" aria-label="Loading cocktails">
+                    {Array.from({ length: 8 }).map((_, idx) => (
+                        <div
+                            key={idx}
+                            className="rounded-2xl bg-[#111114] border border-white/[0.08] overflow-hidden"
+                        >
+                            <div className="aspect-[4/3] w-full bg-[#0c0c0f]" />
+                            <div className="p-4 space-y-2.5">
+                                <div className="h-5 w-2/3 rounded-lg bg-white/[0.06]" />
+                                <div className="h-3.5 w-full rounded bg-white/[0.04]" />
+                                <div className="h-3.5 w-4/5 rounded bg-white/[0.04]" />
+                                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/[0.06]">
+                                    <div className="h-10 rounded-xl bg-white/[0.05]" />
+                                    <div className="h-10 rounded-xl bg-red-600/20" />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Error State */}
+            {!isLoading && isError && (
+                <div className="py-16 px-6 text-center bg-[#111114] border border-white/[0.08] rounded-2xl space-y-3">
+                    <AlertCircle className="w-8 h-8 text-red-400 mx-auto" aria-hidden="true" />
+                    <div className="space-y-1">
+                        <h2 className="text-base font-extrabold text-white">Failed to load catalog</h2>
+                        <p className="text-xs text-zinc-400">
+                            Check your connection to the Dose server and retry.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => refetch()}
+                        className="min-h-[42px] px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold inline-flex items-center gap-1.5 dose-press"
+                    >
+                        <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Retry</span>
+                    </button>
+                </div>
+            )}
+
+            {/* Cocktail Grid */}
+            {!isLoading && !isError && drinks.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                     {drinks.map((drink) => (
                         <DrinkCard
@@ -259,30 +338,47 @@ export const CatalogPage: React.FC = () => {
             )}
 
             {/* Empty State */}
-            {!isLoading && drinks.length === 0 && (
-                <div className="py-20 text-center text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-3xl">
-                    <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-40 text-neutral-400" />
-                    <p className="text-sm font-medium">No drinks found matching your query.</p>
+            {!isLoading && !isError && drinks.length === 0 && (
+                <div className="py-16 px-6 text-center bg-[#111114] border border-white/[0.08] rounded-2xl space-y-3">
+                    <Sparkles className="w-8 h-8 mx-auto text-zinc-500" aria-hidden="true" />
+                    <div className="space-y-1">
+                        <h2 className="text-base font-bold text-white">No cocktails found</h2>
+                        <p className="text-xs text-zinc-400">
+                            {debouncedSearch
+                                ? `No recipes matched “${debouncedSearch}”. Try another spirit or clear filters.`
+                                : 'Your bar catalog is currently empty.'}
+                        </p>
+                    </div>
+                    {(searchQuery || selectedSpirit) && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSearchQuery('');
+                                setSelectedSpirit('');
+                            }}
+                            className="min-h-[40px] px-4 py-2 rounded-xl bg-[#0c0c0f] hover:bg-[#18181d] border border-white/[0.08] text-xs font-bold text-zinc-200 dose-press"
+                        >
+                            Reset Filters
+                        </button>
+                    )}
                 </div>
             )}
 
-            {/* Invisible Sentinel triggering next page fetch */}
-            <div ref={loadMoreRef} className="h-4 w-full pointer-events-none" />
+            {/* Infinite Scroll Sentinel */}
+            <div ref={loadMoreRef} className="h-4 w-full pointer-events-none" aria-hidden="true" />
 
-            {/* Fetching Next Page Spinner */}
             {isFetchingNextPage && (
-                <div className="py-6 flex items-center justify-center gap-2 text-neutral-400 text-xs">
-                    <Loader2 className="w-4 h-4 animate-spin text-red-600" />
-                    <span>Loading more craft cocktails...</span>
+                <div className="py-6 flex items-center justify-center gap-2 text-zinc-400 text-xs">
+                    <Loader2 className="w-4 h-4 animate-spin text-red-500" aria-hidden="true" />
+                    <span>Loading more cocktails…</span>
                 </div>
             )}
 
-            {/* End of Catalog Indicator */}
-            {!isLoading && !hasNextPage && drinks.length > 0 && (
-                <div className="py-10 text-center text-xs text-neutral-500 flex items-center justify-center gap-3">
-                    <div className="h-px bg-neutral-800/80 w-16 sm:w-28" />
-                    <span>You&apos;ve reached the end of the catalog ({totalCount} cocktails)</span>
-                    <div className="h-px bg-neutral-800/80 w-16 sm:w-28" />
+            {!isLoading && !isError && !hasNextPage && drinks.length > 0 && (
+                <div className="py-8 text-center text-xs text-zinc-400 flex items-center justify-center gap-3 tabular-nums">
+                    <div className="h-px bg-white/[0.08] w-14 sm:w-28" aria-hidden="true" />
+                    <span>End of catalog ({totalCount} cocktails)</span>
+                    <div className="h-px bg-white/[0.08] w-14 sm:w-28" aria-hidden="true" />
                 </div>
             )}
 
