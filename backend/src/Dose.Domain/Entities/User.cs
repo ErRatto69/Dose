@@ -1,4 +1,4 @@
-﻿using Dose.Domain.Common;
+using Dose.Domain.Common;
 using Dose.Domain.Enums;
 
 namespace Dose.Domain.Entities;
@@ -20,6 +20,7 @@ public class User : BaseEntity
     public virtual ICollection<CabinetItem> CabinetItems { get; private set; } = new List<CabinetItem>();
     public virtual ICollection<Review> Reviews { get; private set; } = new List<Review>();
     public virtual ICollection<DrinkLog> DrinkLogs { get; private set; } = new List<DrinkLog>();
+    public virtual ICollection<UserAchievement> Achievements { get; private set; } = new List<UserAchievement>();
 
     protected User() { }
 

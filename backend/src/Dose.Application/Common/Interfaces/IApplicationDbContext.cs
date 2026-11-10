@@ -1,4 +1,4 @@
-﻿using Dose.Domain.Entities;
+using Dose.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dose.Application.Common.Interfaces;
@@ -16,6 +16,7 @@ public interface IApplicationDbContext
     DbSet<DrinkLogItem> DrinkLogItems { get; }
     DbSet<WaterLog> WaterLogs { get; }
     DbSet<RankingTier> RankingTiers { get; }
+    DbSet<UserAchievement> UserAchievements { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -1,4 +1,4 @@
-﻿using Dose.Api.Common;
+using Dose.Api.Common;
 using Dose.Application.Common.Exceptions;
 using Dose.Application.Common.Interfaces;
 using Dose.Application.Common.Models;
@@ -61,6 +61,7 @@ public class ReviewsEndpoints : IEndpoint
             UpsertReviewCommand command,
             ICurrentUserService currentUserService,
             IApplicationDbContext context,
+            IGamificationService gamificationService,
             IValidator<UpsertReviewCommand> validator,
             CancellationToken ct) =>
         {
@@ -84,6 +85,7 @@ public class ReviewsEndpoints : IEndpoint
             }
 
             await context.SaveChangesAsync(ct);
+            await gamificationService.RecordReviewSubmittedAsync(userId, ct);
             return Results.NoContent();
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");

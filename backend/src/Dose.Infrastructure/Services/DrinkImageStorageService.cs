@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Sockets;
 using Dose.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Hosting;
@@ -44,6 +44,10 @@ public class DrinkImageStorageService(
                     return null;
                 }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -124,6 +128,7 @@ public class DrinkImageStorageService(
         Directory.CreateDirectory(storageDir);
 
         string targetFilePath = Path.Combine(storageDir, fileName);
+        string tempFilePath = Path.Combine(storageDir, $"{fileName}.tmp");
 
         try
         {
@@ -141,12 +146,21 @@ public class DrinkImageStorageService(
                 FileFormat = WebpFileFormatType.Lossy
             };
 
-            await image.SaveAsync(targetFilePath, encoder, cancellationToken);
+            // Write to temporary file first, then atomically promote to avoid partial WebP files on shutdown/failure
+            await image.SaveAsync(tempFilePath, encoder, cancellationToken);
+            File.Move(tempFilePath, targetFilePath, overwrite: true);
             return $"/storage/drinks/{fileName}";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (File.Exists(tempFilePath)) File.Delete(tempFilePath);
+            if (File.Exists(targetFilePath)) File.Delete(targetFilePath);
+            throw;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to sanitize or encode uploaded image to WebP");
+            if (File.Exists(tempFilePath)) File.Delete(tempFilePath);
             if (File.Exists(targetFilePath)) File.Delete(targetFilePath);
             return null;
         }

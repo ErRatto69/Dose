@@ -1,4 +1,6 @@
-﻿namespace Dose.Application.Features.Leaderboard.Dtos;
+using Dose.Application.Features.Gamification.Dtos;
+
+namespace Dose.Application.Features.Leaderboard.Dtos;
 
 public record LeaderboardEntryDto(
     int Rank,
@@ -9,7 +11,8 @@ public record LeaderboardEntryDto(
     decimal MonthlyPureAlcoholCl,
     RankingTierDto CurrentTier,
     decimal NextTierProgressPercent,
-    decimal GramsToNextTier
+    decimal GramsToNextTier,
+    IReadOnlyList<MonthlyBadgeDto>? MonthlyBadges = null
 );
 
 public record MonthlyLeaderboardResponseDto(

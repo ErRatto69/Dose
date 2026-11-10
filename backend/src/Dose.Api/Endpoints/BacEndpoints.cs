@@ -1,4 +1,4 @@
-﻿using Dose.Api.Common;
+using Dose.Api.Common;
 using Dose.Application.Common.Exceptions;
 using Dose.Application.Common.Interfaces;
 using Dose.Application.Features.DrinkLogs.Dtos;
@@ -95,7 +95,7 @@ public class BacEndpoints : IEndpoint
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
 
-        // Panoramica Party/Admin con ricerca e paginazione
+        // Admin/Party BAC overview with server-side search, ordering, projection, and pagination
         group.MapGet("/admin/users/bac-overview", async (
             int? pageNumber,
             int? pageSize,
@@ -111,93 +111,160 @@ public class BacEndpoints : IEndpoint
             DateTimeOffset now = dateTimeProvider.UtcNow;
             DateTimeOffset twelveHoursAgo = now.AddHours(-12);
 
-            var users = await context.Users
+            var usersQuery = context.Users
                 .AsNoTracking()
-                .Where(u => u.IsActive)
-                .ToListAsync(ct);
+                .Where(u => u.IsActive);
 
-            var logs = await context.DrinkLogs
-                .AsNoTracking()
-                .Where(l => l.ConsumedAt >= twelveHoursAgo && l.ConsumedAt <= now)
-                .Select(l => new { l.UserId, l.Id, l.DrinkNameSnapshot, l.ConsumedAt, l.TotalPureAlcoholGrams, l.StomachState, l.TotalKcal })
-                .ToListAsync(ct);
-
-            var logsByUser = logs.GroupBy(l => l.UserId).ToDictionary(g => g.Key, g => g.ToList());
-
-            var fullOverview = users.Select(u =>
+            if (!string.IsNullOrWhiteSpace(search))
             {
-                var userLogs = logsByUser.TryGetValue(u.Id, out var userEvents)
-                    ? userEvents.Select(e => new DrinkEventInput(
-                        e.Id, 
-                        e.DrinkNameSnapshot, 
-                        e.ConsumedAt, 
-                        e.TotalPureAlcoholGrams, 
-                        0m, 
-                        0m, 
-                        null, 
-                        null, 
-                        e.StomachState, 
-                        e.TotalKcal)).ToList()
-                    : new List<DrinkEventInput>();
+                string pattern = $"%{search.Trim()}%";
+                usersQuery = usersQuery.Where(u => EF.Functions.ILike(u.Username, pattern));
+            }
+
+            int totalCount = await usersQuery.CountAsync(ct);
+
+            var pagedUsers = totalCount == 0
+                ? []
+                : await usersQuery
+                    .OrderByDescending(u => u.DrinkLogs
+                        .Where(l => l.ConsumedAt >= twelveHoursAgo && l.ConsumedAt <= now)
+                        .Sum(l => (decimal?)l.TotalPureAlcoholGrams) ?? 0m)
+                    .ThenBy(u => u.Username)
+                    .Skip((page - 1) * size)
+                    .Take(size)
+                    .Select(u => new
+                    {
+                        u.Id,
+                        u.Username,
+                        u.WeightKg,
+                        u.HeightCm,
+                        u.Sex,
+                        u.BirthYear
+                    })
+                    .ToListAsync(ct);
+
+            var pagedUserIds = pagedUsers.Select(u => u.Id).ToList();
+
+            var activePartyLogs = await context.DrinkLogs
+                .AsNoTracking()
+                .Where(l => l.ConsumedAt >= twelveHoursAgo && l.ConsumedAt <= now && l.User.IsActive)
+                .OrderBy(l => l.ConsumedAt)
+                .Select(l => new
+                {
+                    l.UserId,
+                    l.User.WeightKg,
+                    l.User.HeightCm,
+                    l.User.Sex,
+                    l.User.BirthYear,
+                    l.Id,
+                    l.DrinkNameSnapshot,
+                    l.ConsumedAt,
+                    l.TotalPureAlcoholGrams,
+                    l.StomachState,
+                    l.TotalKcal
+                })
+                .ToListAsync(ct);
+
+            var pagedWaterLogs = pagedUserIds.Count == 0
+                ? []
+                : await context.WaterLogs
+                    .AsNoTracking()
+                    .Where(w => pagedUserIds.Contains(w.UserId) && w.ConsumedAt >= twelveHoursAgo && w.ConsumedAt <= now)
+                    .OrderBy(w => w.ConsumedAt)
+                    .Select(w => new
+                    {
+                        w.UserId,
+                        w.Id,
+                        w.AmountCl,
+                        w.ConsumedAt
+                    })
+                    .ToListAsync(ct);
+
+            var logsByUser = activePartyLogs.GroupBy(l => l.UserId).ToDictionary(g => g.Key, g => g.ToList());
+            var waterByUser = pagedWaterLogs.GroupBy(w => w.UserId).ToDictionary(g => g.Key, g => g.ToList());
+
+            int criticalCount = logsByUser.Values.Count(userLogGroup =>
+            {
+                var first = userLogGroup[0];
+                var events = userLogGroup.Select(e => new DrinkEventInput(
+                    e.Id,
+                    e.DrinkNameSnapshot,
+                    e.ConsumedAt,
+                    e.TotalPureAlcoholGrams,
+                    0m,
+                    0m,
+                    null,
+                    null,
+                    e.StomachState,
+                    e.TotalKcal));
 
                 var bac = bacCalculator.ComputeRollingBac(
-                    u.WeightKg, 
-                    u.HeightCm, 
-                    u.Sex, 
-                    u.BirthYear, 
-                    userLogs, 
-                    Array.Empty<WaterEventInput>(), 
+                    first.WeightKg,
+                    first.HeightCm,
+                    first.Sex,
+                    first.BirthYear,
+                    events,
+                    Array.Empty<WaterEventInput>(),
                     now);
 
-                return new
+                return bac.SafetyLevel is BacSafetyLevel.Warning or BacSafetyLevel.Critical;
+            });
+
+            var pagedItems = pagedUsers
+                .Select(u =>
                 {
-                    u.Id,
-                    u.Username,
-                    CurrentBacGramsPerLiter = bac.CurrentBacGramsPerLiter,
-                    SafetyLevel = bac.SafetyLevel.ToString(),
-                    RawLevel = bac.SafetyLevel,
-                    EstimatedSoberAt = bac.EstimatedSoberAt,
-                    TotalDrinksLast12h = userLogs.Count
-                };
-            })
-            .OrderByDescending(x => x.CurrentBacGramsPerLiter)
-            .ThenBy(x => x.Username)
-            .ToList();
+                    var userLogs = logsByUser.TryGetValue(u.Id, out var userEvents)
+                        ? userEvents.Select(e => new DrinkEventInput(
+                            e.Id,
+                            e.DrinkNameSnapshot,
+                            e.ConsumedAt,
+                            e.TotalPureAlcoholGrams,
+                            0m,
+                            0m,
+                            null,
+                            null,
+                            e.StomachState,
+                            e.TotalKcal)).ToList()
+                        : [];
 
-            int criticalCount = fullOverview.Count(x => x.RawLevel is BacSafetyLevel.Warning or BacSafetyLevel.Critical);
+                    var userWater = waterByUser.TryGetValue(u.Id, out var waterEvents)
+                        ? waterEvents.Select(w => new WaterEventInput(w.Id, w.AmountCl, w.ConsumedAt)).ToList()
+                        : [];
 
-            var filtered = string.IsNullOrWhiteSpace(search)
-                ? fullOverview
-                : fullOverview.Where(x => x.Username.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+                    var bac = bacCalculator.ComputeRollingBac(
+                        u.WeightKg,
+                        u.HeightCm,
+                        u.Sex,
+                        u.BirthYear,
+                        userLogs,
+                        userWater,
+                        now);
 
-            int totalCount = filtered.Count;
-            int totalPages = (int)Math.Ceiling(totalCount / (double)size);
-
-            var pagedItems = filtered
-                .Skip((page - 1) * size)
-                .Take(size)
-                .Select(x => new
-                {
-                    x.Id,
-                    x.Username,
-                    x.CurrentBacGramsPerLiter,
-                    x.SafetyLevel,
-                    x.EstimatedSoberAt,
-                    x.TotalDrinksLast12h
+                    return new UserBacSummaryDto(
+                        u.Id,
+                        u.Username,
+                        bac.CurrentBacGramsPerLiter,
+                        bac.SafetyLevel.ToString(),
+                        bac.EstimatedSoberAt,
+                        userLogs.Count
+                    );
                 })
+                .OrderByDescending(x => x.CurrentBacGramsPerLiter)
+                .ThenBy(x => x.Username)
                 .ToList();
 
-            return Results.Ok(new
-            {
-                Items = pagedItems,
-                TotalCount = totalCount,
-                PageNumber = page,
-                PageSize = size,
-                TotalPages = totalPages,
-                HasPreviousPage = page > 1,
-                HasNextPage = page < totalPages,
-                CriticalCount = criticalCount
-            });
+            int totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)size);
+
+            return Results.Ok(new AdminBacOverviewDto(
+                pagedItems,
+                totalCount,
+                page,
+                size,
+                totalPages,
+                page > 1,
+                page < totalPages,
+                criticalCount
+            ));
         })
         .RequireAuthorization("RequireAdmin");
     }

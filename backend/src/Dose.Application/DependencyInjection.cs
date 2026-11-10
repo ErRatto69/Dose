@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Dose.Application.Services;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +16,7 @@ public static class DependencyInjection
         services.AddSingleton<IBacCalculator, BacCalculator>();
         services.AddSingleton<IDrinkStrengthCalculator, DrinkStrengthCalculator>();
         services.AddSingleton<IRecipeMatcher, RecipeMatcher>();
+        services.AddSingleton<IMonthlyBadgeCalculator, MonthlyBadgeCalculator>();
 
         return services;
     }

@@ -1,4 +1,4 @@
-﻿using Dose.Application.Common.Interfaces;
+using Dose.Application.Common.Interfaces;
 using Dose.Infrastructure.BackgroundJobs;
 using Dose.Infrastructure.Persistence;
 using Dose.Infrastructure.Persistence.Seeding;
@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddScoped<IGamificationService, GamificationService>();
 
         // Image processing & External harvesting services
         services.AddHttpClient("CocktailDbClient", client =>
@@ -47,7 +48,9 @@ public static class DependencyInjection
         });
 
         services.AddSingleton<IDrinkImageStorageService, DrinkImageStorageService>();
-        services.AddSingleton<ICocktailDbSyncService, CocktailDbSyncService>();
+        services.AddSingleton<CocktailDbSyncService>();
+        services.AddSingleton<ICocktailDbSyncService>(sp => sp.GetRequiredService<CocktailDbSyncService>());
+        services.AddHostedService(sp => sp.GetRequiredService<CocktailDbSyncService>());
         
         // Seeder
         services.AddScoped<DatabaseSeeder>();

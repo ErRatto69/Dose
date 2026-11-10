@@ -1,5 +1,6 @@
-﻿using Dose.Api.Common;
+using Dose.Api.Common;
 using Dose.Application.Common.Interfaces;
+using Dose.Application.Features.Gamification.Dtos;
 using Dose.Application.Features.Leaderboard.Dtos;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,6 +15,7 @@ public class LeaderboardEndpoints : IEndpoint
         group.MapGet("/leaderboard", async (
             string? period,
             IApplicationDbContext context,
+            IGamificationService gamificationService,
             IDateTimeProvider dateTimeProvider,
             CancellationToken ct) =>
         {
@@ -22,7 +24,12 @@ public class LeaderboardEndpoints : IEndpoint
             int month = now.Month;
 
             if (!string.IsNullOrWhiteSpace(period) &&
-                DateTime.TryParseExact(period, "yyyy-MM", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
+                DateTime.TryParseExact(
+                    period,
+                    "yyyy-MM",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None,
+                    out var parsedDate))
             {
                 year = parsedDate.Year;
                 month = parsedDate.Month;
@@ -58,6 +65,12 @@ public class LeaderboardEndpoints : IEndpoint
                 .Where(u => userIds.Contains(u.Id) && u.IsActive)
                 .ToDictionaryAsync(u => u.Id, ct);
 
+            var earnedBadgesByUser = await gamificationService.GetEarnedMonthlyBadgesForUsersAsync(
+                userIds,
+                year,
+                month,
+                ct);
+
             var entries = new List<LeaderboardEntryDto>();
             int rank = 1;
 
@@ -89,6 +102,11 @@ public class LeaderboardEndpoints : IEndpoint
                     gramsToNext = Math.Max(0m, nextTier.MinPureAlcoholGrams - logAgg.TotalGrams);
                 }
 
+                IReadOnlyList<MonthlyBadgeDto> userMonthlyBadges =
+                    earnedBadgesByUser.TryGetValue(user.Id, out var badges)
+                        ? badges
+                        : Array.Empty<MonthlyBadgeDto>();
+
                 entries.Add(new LeaderboardEntryDto(
                     rank++,
                     user.Id,
@@ -106,7 +124,8 @@ public class LeaderboardEndpoints : IEndpoint
                         achievedTier.ColorHex
                     ),
                     progressPercent,
-                    gramsToNext
+                    gramsToNext,
+                    userMonthlyBadges
                 ));
             }
 

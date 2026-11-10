@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Dose.Api.Common;
 using Dose.Application.Common.Exceptions;
 using Dose.Application.Common.Interfaces;
@@ -243,6 +243,7 @@ public class DrinksEndpoints : IEndpoint
             IApplicationDbContext context,
             IDrinkStrengthCalculator strengthCalculator,
             ICurrentUserService currentUserService,
+            IGamificationService gamificationService,
             IValidator<CreateDrinkCommand> validator,
             CancellationToken ct) =>
         {
@@ -314,6 +315,11 @@ public class DrinksEndpoints : IEndpoint
             }
 
             await context.SaveChangesAsync(ct);
+
+            if (currentUserService.UserId.HasValue)
+            {
+                await gamificationService.RecordCustomDrinkCreatedAsync(currentUserService.UserId.Value, ct);
+            }
 
             return Results.Created($"/api/drinks/{newDrink.Id}", new { newDrink.Id, newDrink.Name });
         })

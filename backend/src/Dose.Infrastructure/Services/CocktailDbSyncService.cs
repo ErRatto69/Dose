@@ -1,8 +1,9 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading.Channels;
 using Dose.Application.Common.Interfaces;
 using Dose.Application.Features.Admin.Dtos;
 using Dose.Application.Services;
@@ -11,6 +12,7 @@ using Dose.Domain.Enums;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Dose.Infrastructure.Services;
@@ -21,12 +23,24 @@ public partial class CocktailDbSyncService(
     IDrinkStrengthCalculator strengthCalculator,
     IHttpClientFactory httpClientFactory,
     IWebHostEnvironment environment,
-    ILogger<CocktailDbSyncService> logger) : ICocktailDbSyncService
+    IHostApplicationLifetime hostLifetime,
+    IDateTimeProvider dateTimeProvider,
+    ILogger<CocktailDbSyncService> logger) : BackgroundService, ICocktailDbSyncService
 {
-    private static readonly object SyncLock = new();
-    private static readonly ConcurrentDictionary<string, IngredientApiInfo> _ingredientCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan UnitCommitFlushTimeout = TimeSpan.FromSeconds(5);
 
-    private static CocktailDbSyncStatusDto _status = new(
+    private readonly Lock _statusLock = new();
+    private readonly SemaphoreSlim _syncGate = new(1, 1);
+    private readonly Channel<bool> _syncQueue = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+    {
+        FullMode = BoundedChannelFullMode.DropWrite,
+        SingleReader = true,
+        SingleWriter = false
+    });
+    private readonly ConcurrentDictionary<string, IngredientApiInfo> _ingredientCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool _isQueuedOrRunning;
+    private CocktailDbSyncStatusDto _status = new(
         IsRunning: false,
         CurrentLetter: "",
         ProcessedDrinks: 0,
@@ -39,14 +53,28 @@ public partial class CocktailDbSyncService(
         CompletedAt: null
     );
 
-    public CocktailDbSyncStatusDto GetStatus() => _status;
+    public CocktailDbSyncStatusDto GetStatus()
+    {
+        lock (_statusLock)
+        {
+            return _status;
+        }
+    }
 
     public bool StartSync()
     {
-        lock (SyncLock)
-        {
-            if (_status.IsRunning) return false;
+        if (hostLifetime.ApplicationStopping.IsCancellationRequested)
+            return false;
 
+        lock (_statusLock)
+        {
+            if (_isQueuedOrRunning || _status.IsRunning)
+                return false;
+
+            if (!_syncQueue.Writer.TryWrite(true))
+                return false;
+
+            _isQueuedOrRunning = true;
             _status = new CocktailDbSyncStatusDto(
                 IsRunning: true,
                 CurrentLetter: "Starting...",
@@ -56,19 +84,58 @@ public partial class CocktailDbSyncService(
                 ImagesDownloaded: 0,
                 FailedImages: 0,
                 LastError: null,
-                StartedAt: DateTimeOffset.UtcNow,
+                StartedAt: dateTimeProvider.UtcNow,
                 CompletedAt: null
             );
 
-            _ = Task.Run(ExecuteHarvestingLoopAsync);
             return true;
         }
     }
 
-    private async Task ExecuteHarvestingLoopAsync()
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, hostLifetime.ApplicationStopping);
+        CancellationToken ct = linkedCts.Token;
+
+        try
+        {
+            await foreach (bool _ in _syncQueue.Reader.ReadAllAsync(ct))
+            {
+                await _syncGate.WaitAsync(ct);
+                try
+                {
+                    await ExecuteHarvestingLoopAsync(ct);
+                }
+                finally
+                {
+                    _syncGate.Release();
+                }
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            logger.LogInformation("TheCocktailDB background sync service stopped gracefully.");
+        }
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _syncQueue.Writer.TryComplete();
+        await base.StopAsync(cancellationToken);
+    }
+
+    public override void Dispose()
+    {
+        _syncGate.Dispose();
+        base.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    private async Task ExecuteHarvestingLoopAsync(CancellationToken ct)
     {
         var characters = "abcdefghijklmnopqrstuvwxyz0123456789".ToCharArray();
         var client = httpClientFactory.CreateClient("CocktailDbClient");
+        string storageDir = Path.Combine(environment.ContentRootPath, "storage", "drinks");
 
         int processed = 0;
         int added = 0;
@@ -80,8 +147,11 @@ public partial class CocktailDbSyncService(
         {
             foreach (char ch in characters)
             {
+                if (ct.IsCancellationRequested)
+                    break;
+
                 string letter = ch.ToString();
-                lock (SyncLock)
+                lock (_statusLock)
                 {
                     _status = _status with { CurrentLetter = letter };
                 }
@@ -91,7 +161,11 @@ public partial class CocktailDbSyncService(
 
                 try
                 {
-                    json = await client.GetStringAsync(url);
+                    json = await client.GetStringAsync(url, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
@@ -105,54 +179,90 @@ public partial class CocktailDbSyncService(
                     {
                         foreach (var apiDrink in response.Drinks)
                         {
+                            if (ct.IsCancellationRequested)
+                                break;
+
                             processed++;
+                            string? downloadedImagePath = null;
+                            bool imageCommitted = false;
 
                             try
                             {
-                                using var scope = scopeFactory.CreateScope();
+                                await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
                                 var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
 
                                 string drinkName = apiDrink.StrDrink.Trim();
-                                // Modifica all'interno di ExecuteHarvestingLoopAsync():
                                 var existingDrink = await context.Drinks
                                     .Include(d => d.DrinkIngredients)
                                     .ThenInclude(di => di.Ingredient)
-                                    .FirstOrDefaultAsync(d => d.Name.ToLower() == drinkName.ToLower() && d.CreatedByUserId == null);
+                                    .FirstOrDefaultAsync(d => d.Name.ToLower() == drinkName.ToLower() && d.CreatedByUserId == null, ct);
 
-                                string? storedLocalImagePath = null;
-                                if (!string.IsNullOrWhiteSpace(apiDrink.StrDrinkThumb))
+                                if (existingDrink is not null)
                                 {
-                                    storedLocalImagePath = await imageStorageService.DownloadAndSanitizeImageAsync(apiDrink.StrDrinkThumb);
-                                    if (storedLocalImagePath != null) imagesDownloaded++;
-                                    else failedImages++;
-                                }
+                                    bool shouldDownload = ShouldReplaceImage(existingDrink.ImageUrl, storageDir)
+                                        && !string.IsNullOrWhiteSpace(apiDrink.StrDrinkThumb);
 
-                                if (existingDrink != null)
-                                {
-                                    bool updatedAny = await SyncExistingDrinkAsync(existingDrink, apiDrink, storedLocalImagePath, client, context);
+                                    if (shouldDownload)
+                                    {
+                                        downloadedImagePath = await imageStorageService.DownloadAndSanitizeImageAsync(apiDrink.StrDrinkThumb!, ct);
+                                        if (downloadedImagePath is not null) imagesDownloaded++;
+                                        else failedImages++;
+                                    }
+
+                                    bool updatedAny = await SyncExistingDrinkAsync(existingDrink, apiDrink, downloadedImagePath, storageDir, client, context, ct);
                                     if (updatedAny)
                                     {
+                                        using var flushCts = new CancellationTokenSource(UnitCommitFlushTimeout);
+                                        await context.SaveChangesAsync(flushCts.Token);
+                                        imageCommitted = existingDrink.ImageUrl == downloadedImagePath;
                                         updated++;
-                                        await context.SaveChangesAsync();
                                     }
                                 }
                                 else
                                 {
-                                    var newDrink = await CreateDrinkFromApiAsync(apiDrink, storedLocalImagePath, client, context);
-                                    if (newDrink != null)
+                                    var rawIngredients = ExtractIngredientsWithMeasures(apiDrink);
+                                    if (rawIngredients.Count > 0)
                                     {
-                                        await context.Drinks.AddAsync(newDrink);
-                                        await context.SaveChangesAsync();
-                                        added++;
+                                        if (!string.IsNullOrWhiteSpace(apiDrink.StrDrinkThumb))
+                                        {
+                                            downloadedImagePath = await imageStorageService.DownloadAndSanitizeImageAsync(apiDrink.StrDrinkThumb, ct);
+                                            if (downloadedImagePath is not null) imagesDownloaded++;
+                                            else failedImages++;
+                                        }
+
+                                        var newDrink = await CreateDrinkFromApiAsync(apiDrink, rawIngredients, downloadedImagePath, client, context, ct);
+                                        if (newDrink is not null)
+                                        {
+                                            using var flushCts = new CancellationTokenSource(UnitCommitFlushTimeout);
+                                            await context.Drinks.AddAsync(newDrink, flushCts.Token);
+                                            await context.SaveChangesAsync(flushCts.Token);
+                                            imageCommitted = true;
+                                            added++;
+                                        }
                                     }
                                 }
                             }
+                            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                            {
+                                if (!imageCommitted && downloadedImagePath is not null)
+                                    imageStorageService.DeleteImage(downloadedImagePath);
+
+                                throw;
+                            }
                             catch (Exception ex)
                             {
+                                if (!imageCommitted && downloadedImagePath is not null)
+                                    imageStorageService.DeleteImage(downloadedImagePath);
+
                                 logger.LogWarning(ex, "Skipping drink '{DrinkName}' due to import error", apiDrink.StrDrink);
                             }
 
-                            lock (SyncLock)
+                            if (!imageCommitted && downloadedImagePath is not null)
+                            {
+                                imageStorageService.DeleteImage(downloadedImagePath);
+                            }
+
+                            lock (_statusLock)
                             {
                                 _status = _status with
                                 {
@@ -167,29 +277,36 @@ public partial class CocktailDbSyncService(
                     }
                 }
 
-                await Task.Delay(200);
+                await Task.Delay(200, ct);
             }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            logger.LogInformation("TheCocktailDB sync interrupted by shutdown request after flushing active unit of work.");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unhandled error during TheCocktailDB synchronization loop");
-            lock (SyncLock)
+            lock (_statusLock)
             {
                 _status = _status with { LastError = ex.Message };
             }
         }
         finally
         {
-            lock (SyncLock)
+            lock (_statusLock)
             {
+                _isQueuedOrRunning = false;
                 _status = _status with
                 {
                     IsRunning = false,
-                    CurrentLetter = "Done",
-                    CompletedAt = DateTimeOffset.UtcNow
+                    CurrentLetter = ct.IsCancellationRequested ? "Cancelled" : "Done",
+                    CompletedAt = dateTimeProvider.UtcNow
                 };
             }
-            logger.LogInformation("TheCocktailDB sync finished. Processed: {P}, Added: {A}, Updated: {U}, Images: {I}", processed, added, updated, imagesDownloaded);
+            logger.LogInformation(
+                "TheCocktailDB sync finished. Processed: {P}, Added: {A}, Updated: {U}, Images: {I}, Cancelled: {C}",
+                processed, added, updated, imagesDownloaded, ct.IsCancellationRequested);
         }
     }
 
@@ -197,16 +314,17 @@ public partial class CocktailDbSyncService(
         Drink existingDrink,
         TheCocktailDbDrink apiDrink,
         string? storedLocalImagePath,
+        string storageDir,
         HttpClient client,
-        IApplicationDbContext context)
+        IApplicationDbContext context,
+        CancellationToken ct)
     {
-        string storageDir = Path.Combine(environment.ContentRootPath, "storage", "drinks");
         bool shouldUpdateImage = ShouldReplaceImage(existingDrink.ImageUrl, storageDir);
         string sanitizedGlass = SanitizeGlassType(apiDrink.StrGlass);
 
         bool changesMade = false;
 
-        string targetImage = shouldUpdateImage && !string.IsNullOrWhiteSpace(storedLocalImagePath)
+        string? targetImage = shouldUpdateImage && !string.IsNullOrWhiteSpace(storedLocalImagePath)
             ? storedLocalImagePath
             : existingDrink.ImageUrl;
 
@@ -217,18 +335,20 @@ public partial class CocktailDbSyncService(
                 existingDrink.Description,
                 existingDrink.PreparationStepsJson,
                 sanitizedGlass,
-                targetImage
+                targetImage,
+                existingDrink.IsLockedByCreator
             );
             changesMade = true;
         }
 
-        // Verifica e aggiorna l'ABV degli ingredienti del drink
+        // Verify and update ABV/category for drink ingredients
         var rawIngredients = ExtractIngredientsWithMeasures(apiDrink);
         foreach (var (ingName, _) in rawIngredients)
         {
-            var meta = await ResolveIngredientMetadataAsync(ingName, apiDrink.StrAlcoholic, client);
-            var dbIng = existingDrink.DrinkIngredients.FirstOrDefault(di => di.Ingredient.Name.Equals(ingName, StringComparison.OrdinalIgnoreCase))?.Ingredient
-                ?? await context.Ingredients.FirstOrDefaultAsync(i => i.Name.ToLower() == ingName.ToLower());
+            var meta = await ResolveIngredientMetadataAsync(ingName, apiDrink.StrAlcoholic, client, ct);
+            var dbIng = existingDrink.DrinkIngredients
+                            .FirstOrDefault(di => di.Ingredient.Name.Equals(ingName, StringComparison.OrdinalIgnoreCase))?.Ingredient
+                        ?? await context.Ingredients.FirstOrDefaultAsync(i => i.Name.ToLower() == ingName.ToLower(), ct);
 
             if (dbIng != null && (dbIng.Abv != meta.Abv || dbIng.Category != meta.Category))
             {
@@ -237,7 +357,7 @@ public partial class CocktailDbSyncService(
             }
         }
 
-        // Ricalcola le metriche per correggere valori sballati (es. 40% su birre o 165g di etanolo)
+        // Recalculate metrics to keep cached ABV and pure alcohol consistent
         var components = existingDrink.DrinkIngredients
             .Select(di => new RecipeComponentInput(di.Ingredient.Category, di.AmountCl, di.Ingredient.Abv))
             .ToList();
@@ -254,10 +374,15 @@ public partial class CocktailDbSyncService(
 
     private async Task<Drink?> CreateDrinkFromApiAsync(
         TheCocktailDbDrink apiDrink,
+        List<(string Ingredient, string? Measure)> rawIngredients,
         string? localImageUrl,
         HttpClient client,
-        IApplicationDbContext context)
+        IApplicationDbContext context,
+        CancellationToken ct)
     {
+        if (rawIngredients.Count == 0)
+            return null;
+
         string instructions = !string.IsNullOrWhiteSpace(apiDrink.StrInstructions)
             ? apiDrink.StrInstructions.Trim()
             : "Mix all ingredients and serve.";
@@ -273,9 +398,6 @@ public partial class CocktailDbSyncService(
         string stepsJson = JsonSerializer.Serialize(stepsList);
         string glassType = SanitizeGlassType(apiDrink.StrGlass);
 
-        var rawIngredients = ExtractIngredientsWithMeasures(apiDrink);
-        if (rawIngredients.Count == 0) return null;
-
         var drink = new Drink(
             name: apiDrink.StrDrink.Trim(),
             description: $"{apiDrink.StrCategory ?? "Cocktail"} ({apiDrink.StrAlcoholic ?? "Alcoholic"}). {stepsList.FirstOrDefault() ?? "Classic mixed drink."}",
@@ -285,33 +407,38 @@ public partial class CocktailDbSyncService(
         );
 
         short order = 1;
+        var stagedIngredients = new Dictionary<string, Ingredient>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var (ingName, measureStr) in rawIngredients)
         {
             var (amountCl, note) = ParseMeasureToCl(measureStr);
 
-            var meta = await ResolveIngredientMetadataAsync(ingName, apiDrink.StrAlcoholic, client);
+            var meta = await ResolveIngredientMetadataAsync(ingName, apiDrink.StrAlcoholic, client, ct);
 
-            var dbIngredient = await context.Ingredients
-                .FirstOrDefaultAsync(i => i.Name.ToLower() == ingName.ToLower());
+            if (!stagedIngredients.TryGetValue(ingName, out var dbIngredient))
+            {
+                dbIngredient = await context.Ingredients
+                    .FirstOrDefaultAsync(i => i.Name.ToLower() == ingName.ToLower(), ct);
 
-            if (dbIngredient == null)
-            {
-                dbIngredient = new Ingredient(
-                    name: ingName,
-                    category: meta.Category,
-                    subCategory: meta.SubCategory,
-                    abv: meta.Abv,
-                    flavor: null,
-                    isAvailableInBar: false,
-                    description: $"Imported from TheCocktailDB for {apiDrink.StrDrink}"
-                );
-                await context.Ingredients.AddAsync(dbIngredient);
-                await context.SaveChangesAsync();
-            }
-            else if (dbIngredient.Abv != meta.Abv || dbIngredient.Category != meta.Category)
-            {
-                dbIngredient.SetDetails(dbIngredient.Name, meta.Category, meta.SubCategory, meta.Abv, dbIngredient.Flavor);
+                if (dbIngredient == null)
+                {
+                    dbIngredient = new Ingredient(
+                        name: ingName,
+                        category: meta.Category,
+                        subCategory: meta.SubCategory,
+                        abv: meta.Abv,
+                        flavor: null,
+                        isAvailableInBar: false,
+                        description: $"Imported from TheCocktailDB for {apiDrink.StrDrink}"
+                    );
+                    await context.Ingredients.AddAsync(dbIngredient, ct);
+                }
+                else if (dbIngredient.Abv != meta.Abv || dbIngredient.Category != meta.Category)
+                {
+                    dbIngredient.SetDetails(dbIngredient.Name, meta.Category, meta.SubCategory, meta.Abv, dbIngredient.Flavor);
+                }
+
+                stagedIngredients[ingName] = dbIngredient;
             }
 
             var existingLink = drink.DrinkIngredients.FirstOrDefault(di => di.IngredientId == dbIngredient.Id);
@@ -353,17 +480,18 @@ public partial class CocktailDbSyncService(
     private async Task<IngredientApiInfo> ResolveIngredientMetadataAsync(
         string name,
         string? drinkAlcoholicStr,
-        HttpClient client)
+        HttpClient client,
+        CancellationToken ct)
     {
         string key = name.Trim().ToLowerInvariant();
         if (_ingredientCache.TryGetValue(key, out var cached))
             return cached;
 
-        // 1. Interroga l'API di TheCocktailDB per ottenere strAlcohol e strABV reale
+        // 1. Query TheCocktailDB ingredient endpoint for strAlcohol and strABV
         try
         {
             string url = $"https://www.thecocktaildb.com/api/json/v1/1/search.php?i={Uri.EscapeDataString(name.Trim())}";
-            string? json = await client.GetStringAsync(url);
+            string? json = await client.GetStringAsync(url, ct);
 
             if (!string.IsNullOrWhiteSpace(json))
             {
@@ -393,12 +521,16 @@ public partial class CocktailDbSyncService(
                 }
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Could not fetch ingredient info for {Name} from API, using fallback", name);
         }
 
-        // 2. Fallback euristico avanzato se l'ingrediente non è nel DB degli ingredienti dell'API
+        // 2. Heuristic fallback when the ingredient is not listed in the remote API
         var fallback = DeduceCategoryAndAbv(name, drinkAlcoholicStr);
         var fallbackInfo = new IngredientApiInfo(name.Trim(), fallback.Category, fallback.SubCategory, fallback.Abv);
         _ingredientCache[key] = fallbackInfo;

@@ -1,4 +1,4 @@
-﻿using Dose.Api.Common;
+using Dose.Api.Common;
 using Dose.Application.Common.Exceptions;
 using Dose.Application.Common.Interfaces;
 using Dose.Application.Features.DrinkLogs.Dtos;
@@ -25,6 +25,7 @@ public class DrinkLogsEndpoints : IEndpoint
             IApplicationDbContext context,
             IDrinkStrengthCalculator strengthCalculator,
             IBacCalculator bacCalculator,
+            IGamificationService gamificationService,
             IDateTimeProvider dateTimeProvider,
             CancellationToken ct) =>
         {
@@ -120,6 +121,9 @@ public class DrinkLogsEndpoints : IEndpoint
             await context.DrinkLogs.AddAsync(drinkLog, ct);
             await context.SaveChangesAsync(ct);
 
+            await gamificationService.RecordDrinkLoggedAsync(userId, originalDrink.GlassType, ct);
+            gamificationService.InvalidateMonthlyBadgesCache(userId, consumptionTime);
+
             var bacResult = await ComputeCurrentUserBacAsync(user, context, bacCalculator, dateTimeProvider, ct);
 
             return Results.Created($"/api/drinks/logs/{drinkLog.Id}", new DrinkLogResponseDto(
@@ -145,6 +149,7 @@ public class DrinkLogsEndpoints : IEndpoint
             IApplicationDbContext context,
             IDrinkStrengthCalculator strengthCalculator,
             IBacCalculator bacCalculator,
+            IGamificationService gamificationService,
             IDateTimeProvider dateTimeProvider,
             CancellationToken ct) =>
         {
@@ -225,6 +230,9 @@ public class DrinkLogsEndpoints : IEndpoint
             await context.DrinkLogs.AddAsync(drinkLog, ct);
             await context.SaveChangesAsync(ct);
 
+            await gamificationService.RecordDrinkLoggedAsync(userId, glassType: null, ct);
+            gamificationService.InvalidateMonthlyBadgesCache(userId, consumptionTime);
+
             var bacResult = await ComputeCurrentUserBacAsync(user, context, bacCalculator, dateTimeProvider, ct);
 
             return Results.Created($"/api/drinks/logs/{drinkLog.Id}", new DrinkLogResponseDto(
@@ -248,6 +256,7 @@ public class DrinkLogsEndpoints : IEndpoint
             LogWaterRequestDto? request,
             ICurrentUserService currentUserService,
             IApplicationDbContext context,
+            IGamificationService gamificationService,
             IDateTimeProvider dateTimeProvider,
             CancellationToken ct) =>
         {
@@ -258,6 +267,9 @@ public class DrinkLogsEndpoints : IEndpoint
             var waterLog = new WaterLog(userId, amountCl, consumedAt);
             await context.WaterLogs.AddAsync(waterLog, ct);
             await context.SaveChangesAsync(ct);
+
+            await gamificationService.RecordWaterLoggedAsync(userId, ct);
+            gamificationService.InvalidateMonthlyBadgesCache(userId, consumedAt);
 
             return Results.Ok(new { waterLog.Id, waterLog.AmountCl, waterLog.ConsumedAt });
         })
@@ -271,6 +283,7 @@ public class DrinkLogsEndpoints : IEndpoint
             IApplicationDbContext context,
             IDrinkStrengthCalculator strengthCalculator,
             IBacCalculator bacCalculator,
+            IGamificationService gamificationService,
             IDateTimeProvider dateTimeProvider,
             CancellationToken ct) =>
         {
@@ -283,6 +296,7 @@ public class DrinkLogsEndpoints : IEndpoint
                 ?? throw new NotFoundException(nameof(DrinkLog), logId);
 
             DateTimeOffset now = dateTimeProvider.UtcNow;
+            DateTimeOffset previousConsumedAt = drinkLog.ConsumedAt;
             if (drinkLog.ConsumedAt < now.AddHours(-12))
                 throw new DomainException("Only drinks logged within the last 12 hours can be modified.");
 
@@ -369,6 +383,9 @@ public class DrinkLogsEndpoints : IEndpoint
 
             await context.SaveChangesAsync(ct);
 
+            gamificationService.InvalidateMonthlyBadgesCache(userId, previousConsumedAt);
+            gamificationService.InvalidateMonthlyBadgesCache(userId, updatedConsumedAt);
+
             var bacResult = await ComputeCurrentUserBacAsync(user, context, bacCalculator, dateTimeProvider, ct);
 
             return Results.Ok(new DrinkLogResponseDto(
@@ -392,6 +409,7 @@ public class DrinkLogsEndpoints : IEndpoint
             Guid logId,
             ICurrentUserService currentUserService,
             IApplicationDbContext context,
+            IGamificationService gamificationService,
             IDateTimeProvider dateTimeProvider,
             CancellationToken ct) =>
         {
@@ -403,8 +421,10 @@ public class DrinkLogsEndpoints : IEndpoint
             if (drinkLog.ConsumedAt < dateTimeProvider.UtcNow.AddHours(-12))
                 throw new DomainException("Only drinks logged within the last 12 hours can be removed.");
 
+            DateTimeOffset consumedAt = drinkLog.ConsumedAt;
             context.DrinkLogs.Remove(drinkLog);
             await context.SaveChangesAsync(ct);
+            gamificationService.InvalidateMonthlyBadgesCache(userId, consumedAt);
 
             return Results.NoContent();
         })
@@ -416,6 +436,7 @@ public class DrinkLogsEndpoints : IEndpoint
             UpdateWaterLogRequestDto request,
             ICurrentUserService currentUserService,
             IApplicationDbContext context,
+            IGamificationService gamificationService,
             IDateTimeProvider dateTimeProvider,
             CancellationToken ct) =>
         {
@@ -425,6 +446,7 @@ public class DrinkLogsEndpoints : IEndpoint
                 ?? throw new NotFoundException(nameof(WaterLog), id);
 
             DateTimeOffset now = dateTimeProvider.UtcNow;
+            DateTimeOffset previousConsumedAt = waterLog.ConsumedAt;
             if (waterLog.ConsumedAt < now.AddHours(-12))
                 throw new DomainException("Only water logged within the last 12 hours can be modified.");
 
@@ -436,6 +458,8 @@ public class DrinkLogsEndpoints : IEndpoint
             waterLog.UpdateDetails(amountCl, updatedConsumedAt);
 
             await context.SaveChangesAsync(ct);
+            gamificationService.InvalidateMonthlyBadgesCache(userId, previousConsumedAt);
+            gamificationService.InvalidateMonthlyBadgesCache(userId, updatedConsumedAt);
             return Results.Ok(new { waterLog.Id, waterLog.AmountCl, waterLog.ConsumedAt });
         })
         .RequireAuthorization("RequireAuthenticatedDrinker");
@@ -445,6 +469,7 @@ public class DrinkLogsEndpoints : IEndpoint
             Guid id,
             ICurrentUserService currentUserService,
             IApplicationDbContext context,
+            IGamificationService gamificationService,
             IDateTimeProvider dateTimeProvider,
             CancellationToken ct) =>
         {
@@ -456,8 +481,10 @@ public class DrinkLogsEndpoints : IEndpoint
             if (waterLog.ConsumedAt < dateTimeProvider.UtcNow.AddHours(-12))
                 throw new DomainException("Only water logged within the last 12 hours can be removed.");
 
+            DateTimeOffset consumedAt = waterLog.ConsumedAt;
             context.WaterLogs.Remove(waterLog);
             await context.SaveChangesAsync(ct);
+            gamificationService.InvalidateMonthlyBadgesCache(userId, consumedAt);
 
             return Results.NoContent();
         })

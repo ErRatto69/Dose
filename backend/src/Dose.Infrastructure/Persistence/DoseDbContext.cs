@@ -1,4 +1,4 @@
-﻿using Dose.Application.Common.Interfaces;
+using Dose.Application.Common.Interfaces;
 using Dose.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,6 +18,7 @@ public class DoseDbContext(DbContextOptions<DoseDbContext> options)
     public DbSet<DrinkLogItem> DrinkLogItems => Set<DrinkLogItem>();
     public DbSet<WaterLog> WaterLogs => Set<WaterLog>();
     public DbSet<RankingTier> RankingTiers => Set<RankingTier>();
+    public DbSet<UserAchievement> UserAchievements => Set<UserAchievement>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
