@@ -18,8 +18,10 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         // PostgreSQL DbContext con connection string da configuration/environment
-        string connectionString = configuration.GetConnectionString("DefaultConnection")
-                                  ?? "Host=localhost;Port=5432;Database=dose_prod;Username=dose_admin;Password=dose_pass";
+        string? configuredConnection = configuration.GetConnectionString("DefaultConnection");
+        string connectionString = !string.IsNullOrWhiteSpace(configuredConnection)
+            ? configuredConnection
+            : "Host=localhost;Port=5432;Database=dose_prod;Username=dose_admin;Password=dose_pass";
 
         services.AddDbContext<DoseDbContext>(options =>
         {

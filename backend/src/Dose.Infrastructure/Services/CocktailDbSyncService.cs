@@ -11,6 +11,7 @@ using Dose.Domain.Entities;
 using Dose.Domain.Enums;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -25,8 +26,10 @@ public partial class CocktailDbSyncService(
     IWebHostEnvironment environment,
     IHostApplicationLifetime hostLifetime,
     IDateTimeProvider dateTimeProvider,
-    ILogger<CocktailDbSyncService> logger) : BackgroundService, ICocktailDbSyncService
+    ILogger<CocktailDbSyncService> logger,
+    IConfiguration? configuration = null) : BackgroundService, ICocktailDbSyncService
 {
+    private readonly string _cocktailDbBaseUrl = (configuration?["CocktailDb:BaseUrl"] ?? "https://www.thecocktaildb.com/api/json/v1/1").TrimEnd('/');
     private static readonly TimeSpan UnitCommitFlushTimeout = TimeSpan.FromSeconds(5);
 
     private readonly Lock _statusLock = new();
@@ -156,7 +159,7 @@ public partial class CocktailDbSyncService(
                     _status = _status with { CurrentLetter = letter };
                 }
 
-                string url = $"https://www.thecocktaildb.com/api/json/v1/1/search.php?f={letter}";
+                string url = $"{_cocktailDbBaseUrl}/search.php?f={letter}";
                 string? json = null;
 
                 try
@@ -490,7 +493,7 @@ public partial class CocktailDbSyncService(
         // 1. Query TheCocktailDB ingredient endpoint for strAlcohol and strABV
         try
         {
-            string url = $"https://www.thecocktaildb.com/api/json/v1/1/search.php?i={Uri.EscapeDataString(name.Trim())}";
+            string url = $"{_cocktailDbBaseUrl}/search.php?i={Uri.EscapeDataString(name.Trim())}";
             string? json = await client.GetStringAsync(url, ct);
 
             if (!string.IsNullOrWhiteSpace(json))

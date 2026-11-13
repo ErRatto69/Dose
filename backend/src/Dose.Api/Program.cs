@@ -25,20 +25,26 @@ builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddSecurityConfiguration(builder.Configuration);
 
-// 2. Configure Forwarded Headers for Reverse Proxy (Nginx / NPM)
+// 2. Configure Forwarded Headers for Reverse Proxy (Cloudflare Tunnel + Nginx)
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 2;
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 });
 
 // 3. Rate Limiting Configuration
+int authPermitLimit = builder.Configuration.GetValue<int?>("RateLimiting:AuthPermitLimit") ?? 5;
+int authWindowSeconds = builder.Configuration.GetValue<int?>("RateLimiting:AuthWindowSeconds") ?? 60;
+int uploadPermitLimit = builder.Configuration.GetValue<int?>("RateLimiting:UploadPermitLimit") ?? 10;
+int uploadWindowSeconds = builder.Configuration.GetValue<int?>("RateLimiting:UploadWindowSeconds") ?? 60;
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-    // Policy Brute-Force Auth (Login & Register requests): Max 5 tentativi al minuto per IP
+    // Policy Brute-Force Auth (Login & Register requests)
     options.AddPolicy("auth-policy", httpContext =>
     {
         var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-auth";
@@ -46,13 +52,13 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: clientIp,
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 5,
-                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = authPermitLimit,
+                Window = TimeSpan.FromSeconds(authWindowSeconds),
                 QueueLimit = 0
             });
     });
 
-    // Policy Upload Immagini: Max 10 upload al minuto per IP
+    // Policy Upload Immagini
     options.AddPolicy("upload-policy", httpContext =>
     {
         var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-upload";
@@ -60,8 +66,8 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: clientIp,
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 10,
-                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = uploadPermitLimit,
+                Window = TimeSpan.FromSeconds(uploadWindowSeconds),
                 QueueLimit = 0
             });
     });

@@ -62,6 +62,12 @@ public class DatabaseSeeder(
         {
             logger.LogInformation("Seeding default admin user...");
             
+            string? configuredUsername = configuration["AdminUser:Username"];
+            string adminUsername = !string.IsNullOrWhiteSpace(configuredUsername) ? configuredUsername.Trim() : "admin";
+
+            string? configuredEmail = configuration["AdminUser:Email"];
+            string adminEmail = !string.IsNullOrWhiteSpace(configuredEmail) ? configuredEmail.Trim() : "admin@dose.local";
+
             string? configuredPassword = configuration["AdminUser:InitialPassword"]
                                          ?? configuration["ADMIN_INITIAL_PASSWORD"];
 
@@ -79,8 +85,8 @@ public class DatabaseSeeder(
             string passwordHash = passwordHasher.HashPassword(adminPassword);
 
             var admin = new User(
-                username: "admin",
-                email: "admin@dose.local",
+                username: adminUsername,
+                email: adminEmail,
                 passwordHash: passwordHash,
                 role: UserRole.Admin,
                 weightKg: 75.0m,

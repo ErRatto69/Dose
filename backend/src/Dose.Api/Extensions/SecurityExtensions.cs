@@ -14,8 +14,9 @@ public static class SecurityExtensions
 {
     public static IServiceCollection AddSecurityConfiguration(this IServiceCollection services, IConfiguration configuration)
     {
-        string secretKey = configuration["Jwt:SecretKey"]
-            ?? throw new InvalidOperationException("Jwt:SecretKey is not configured.");
+        string? secretKey = configuration["Jwt:SecretKey"];
+        if (string.IsNullOrWhiteSpace(secretKey))
+            throw new InvalidOperationException("Jwt:SecretKey is not configured.");
         string issuer = configuration["Jwt:Issuer"] ?? "DoseApp";
         string audience = configuration["Jwt:Audience"] ?? "DoseClients";
 

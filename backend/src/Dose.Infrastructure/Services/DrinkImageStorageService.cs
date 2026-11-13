@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using Dose.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Webp;
@@ -12,10 +13,15 @@ namespace Dose.Infrastructure.Services;
 public class DrinkImageStorageService(
     IWebHostEnvironment environment,
     IHttpClientFactory httpClientFactory,
-    ILogger<DrinkImageStorageService> logger) : IDrinkImageStorageService
+    ILogger<DrinkImageStorageService> logger,
+    IConfiguration? configuration = null) : IDrinkImageStorageService
 {
-    private const long MaxAllowedFileSizeBytes = 5 * 1024 * 1024; // 5 MB
-    private static readonly string[] AllowedHosts = ["www.thecocktaildb.com", "thecocktaildb.com"];
+    private readonly long _maxAllowedFileSizeBytes =
+        Math.Max(1, configuration?.GetValue<int?>("Storage:MaxImageSizeMb") ?? 5) * 1024L * 1024L;
+    private readonly string[] _allowedHosts =
+        configuration?.GetSection("CocktailDb:AllowedImageHosts").Get<string[]>() is { Length: > 0 } configuredHosts
+            ? configuredHosts
+            : ["www.thecocktaildb.com", "thecocktaildb.com"];
 
     public async Task<string?> DownloadAndSanitizeImageAsync(string sourceUrl, CancellationToken cancellationToken = default)
     {
@@ -26,7 +32,7 @@ public class DrinkImageStorageService(
         }
 
         // 1. SSRF Mitigation: Host whitelist
-        if (!AllowedHosts.Contains(uri.Host.ToLowerInvariant()))
+        if (!_allowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
         {
             logger.LogWarning("SSRF attempt blocked. Host not in whitelist: {Host}", uri.Host);
             return null;
@@ -64,9 +70,9 @@ public class DrinkImageStorageService(
             return null;
         }
 
-        if (response.Content.Headers.ContentLength > MaxAllowedFileSizeBytes)
+        if (response.Content.Headers.ContentLength > _maxAllowedFileSizeBytes)
         {
-            logger.LogWarning("Remote image exceeds max allowed size of 5MB: {Url}", sourceUrl);
+            logger.LogWarning("Remote image exceeds max allowed size ({MaxBytes} bytes): {Url}", _maxAllowedFileSizeBytes, sourceUrl);
             return null;
         }
 
@@ -81,9 +87,9 @@ public class DrinkImageStorageService(
 
     private async Task<string?> ProcessAndPersistImageStreamAsync(Stream stream, long declaredLength, CancellationToken cancellationToken)
     {
-        if (declaredLength > MaxAllowedFileSizeBytes)
+        if (declaredLength > _maxAllowedFileSizeBytes)
         {
-            logger.LogWarning("Stream declared length exceeds 5MB: {Length} bytes", declaredLength);
+            logger.LogWarning("Stream declared length exceeds limit ({MaxBytes} bytes): {Length} bytes", _maxAllowedFileSizeBytes, declaredLength);
             return null;
         }
 
@@ -92,13 +98,13 @@ public class DrinkImageStorageService(
         long totalBytesRead = 0;
         int bytesRead;
 
-        // Lettura protetta: se lo stream supera 5 MB reali, interrompe subito senza saturare la RAM
+        // Lettura protetta: se lo stream supera il limite reale, interrompe subito senza saturare la RAM
         while ((bytesRead = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
         {
             totalBytesRead += bytesRead;
-            if (totalBytesRead > MaxAllowedFileSizeBytes)
+            if (totalBytesRead > _maxAllowedFileSizeBytes)
             {
-                logger.LogWarning("Payload size exceeded maximum allowed limit of 5MB");
+                logger.LogWarning("Payload size exceeded maximum allowed limit ({MaxBytes} bytes)", _maxAllowedFileSizeBytes);
                 return null;
             }
             await memoryStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);

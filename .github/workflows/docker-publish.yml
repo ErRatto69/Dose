@@ -9,7 +9,9 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
+  REGISTRY: ${{ vars.DOCKER_REGISTRY || 'ghcr.io' }}
+  BACKEND_IMAGE_NAME: ${{ vars.BACKEND_IMAGE_NAME || 'dose-backend' }}
+  FRONTEND_IMAGE_NAME: ${{ vars.FRONTEND_IMAGE_NAME || 'dose-frontend' }}
 
 jobs:
   build-and-push:
@@ -41,7 +43,7 @@ jobs:
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/dose-backend
+          images: ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ env.BACKEND_IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=sha
@@ -64,7 +66,7 @@ jobs:
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/dose-frontend
+          images: ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ env.FRONTEND_IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=sha
@@ -77,6 +79,12 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
+          build-args: |
+            VITE_BASE_URL=${{ vars.VITE_BASE_URL || '/' }}
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '' }}
+            VITE_APP_NAME=${{ vars.VITE_APP_NAME || 'Dose - Bar & Drinking Tracker' }}
+            VITE_APP_SHORT_NAME=${{ vars.VITE_APP_SHORT_NAME || 'Dose' }}
+            VITE_APP_DESCRIPTION=${{ vars.VITE_APP_DESCRIPTION || 'Track drinks, measure BAC realtime, and discover craft cocktail recipes.' }}
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha

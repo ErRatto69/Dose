@@ -23,6 +23,7 @@ public class AuthEndpoints : IEndpoint
             IApplicationDbContext context,
             IPasswordHasher passwordHasher,
             IJwtTokenService jwtTokenService,
+            IConfiguration configuration,
             IValidator<LoginRequestDto> validator,
             CancellationToken ct) =>
         {
@@ -41,7 +42,11 @@ public class AuthEndpoints : IEndpoint
             if (user is null || !user.IsActive || !passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
                 throw new UnauthorizedException("Invalid username/email or password, or account is disabled.");
 
-            string token = jwtTokenService.GenerateToken(user);
+            int expirationMinutes = configuration.GetValue<int?>("Jwt:ExpirationMinutes") ?? 10080;
+            if (expirationMinutes <= 0)
+                expirationMinutes = 10080;
+
+            string token = jwtTokenService.GenerateToken(user, expirationMinutes);
 
             var userProfile = new UserProfileDto(
                 user.Id,
@@ -56,7 +61,7 @@ public class AuthEndpoints : IEndpoint
                 user.IsActive
             );
 
-            return Results.Ok(new AuthResponseDto(token, 604800, userProfile));
+            return Results.Ok(new AuthResponseDto(token, expirationMinutes * 60, userProfile));
         })
         .WithName("Login")
         .Produces<AuthResponseDto>(StatusCodes.Status200OK)
@@ -71,6 +76,7 @@ public class AuthEndpoints : IEndpoint
             IApplicationDbContext context,
             IPasswordHasher passwordHasher,
             IDateTimeProvider dateTimeProvider,
+            IConfiguration configuration,
             IValidator<CreateRegistrationRequestDto> validator,
             CancellationToken ct) =>
         {
@@ -84,22 +90,26 @@ public class AuthEndpoints : IEndpoint
             if (!validationResult.IsValid)
                 throw new ValidationException(validationResult.Errors);
 
+            int maxPendingQueue = configuration.GetValue<int?>("Registration:MaxPendingQueue") ?? 30;
+            int maxRequestsPerIp = configuration.GetValue<int?>("Registration:MaxRequestsPerIpWindow") ?? 2;
+            int windowHours = configuration.GetValue<int?>("Registration:RateLimitWindowHours") ?? 12;
+
             // 2. Global pending queue cap to prevent database flooding
             int pendingQueueCount = await context.RegistrationRequests
                 .CountAsync(r => r.Status == RegistrationRequestStatus.Pending, ct);
 
-            if (pendingQueueCount >= 30)
+            if (pendingQueueCount >= maxPendingQueue)
                 throw new DomainException("The registration queue is currently full. Please contact the host directly.");
 
-            // 3. Extract real client IP and enforce rate limit (max 1 pending or 2 requests per 12h per IP)
+            // 3. Extract real client IP and enforce rate limit
             string clientIp = GetClientIpAddress(httpContext);
-            DateTimeOffset twelveHoursAgo = dateTimeProvider.UtcNow.AddHours(-12);
+            DateTimeOffset windowStart = dateTimeProvider.UtcNow.AddHours(-windowHours);
 
             int recentRequestsFromIp = await context.RegistrationRequests
                 .CountAsync(r => r.ClientIpAddress == clientIp &&
-                                 (r.Status == RegistrationRequestStatus.Pending || r.CreatedAt >= twelveHoursAgo), ct);
+                                 (r.Status == RegistrationRequestStatus.Pending || r.CreatedAt >= windowStart), ct);
 
-            if (recentRequestsFromIp >= 2)
+            if (recentRequestsFromIp >= maxRequestsPerIp)
                 throw new DomainException("You have already submitted a registration request recently. Please wait for admin approval.");
 
             // 4. Verify username and email are not already taken or pending

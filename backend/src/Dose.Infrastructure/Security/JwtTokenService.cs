@@ -12,10 +12,14 @@ public class JwtTokenService(IConfiguration configuration) : IJwtTokenService
 {
     public string GenerateToken(User user, int expirationMinutes = 10080)
     {
-        string secretKey = configuration["Jwt:SecretKey"]
-                           ?? throw new InvalidOperationException("Jwt:SecretKey configuration is missing.");
+        string? secretKey = configuration["Jwt:SecretKey"];
+        if (string.IsNullOrWhiteSpace(secretKey))
+            throw new InvalidOperationException("Jwt:SecretKey configuration is missing.");
         string issuer = configuration["Jwt:Issuer"] ?? "DoseApp";
         string audience = configuration["Jwt:Audience"] ?? "DoseClients";
+        int effectiveExpirationMinutes = expirationMinutes > 0
+            ? expirationMinutes
+            : configuration.GetValue<int?>("Jwt:ExpirationMinutes") ?? 10080;
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -33,7 +37,7 @@ public class JwtTokenService(IConfiguration configuration) : IJwtTokenService
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
-            Expires = DateTime.UtcNow.AddMinutes(expirationMinutes),
+            Expires = DateTime.UtcNow.AddMinutes(effectiveExpirationMinutes),
             Issuer = issuer,
             Audience = audience,
             SigningCredentials = credentials
