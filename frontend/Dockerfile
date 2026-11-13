@@ -2,6 +2,18 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
+ARG VITE_BASE_URL=/
+ARG VITE_API_BASE_URL=
+ARG VITE_APP_NAME="Dose - Bar & Drinking Tracker"
+ARG VITE_APP_SHORT_NAME=Dose
+ARG VITE_APP_DESCRIPTION="Track drinks, measure BAC realtime, and discover craft cocktail recipes."
+
+ENV VITE_BASE_URL=$VITE_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_APP_NAME=$VITE_APP_NAME
+ENV VITE_APP_SHORT_NAME=$VITE_APP_SHORT_NAME
+ENV VITE_APP_DESCRIPTION=$VITE_APP_DESCRIPTION
+
 COPY package.json package-lock.json* ./
 RUN npm ci
 
